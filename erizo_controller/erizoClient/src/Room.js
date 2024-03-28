@@ -19,6 +19,47 @@ const log = Logger.module('Room');
  * Event 'stream-added' indicates that there is a new stream available in the room.
  * Event 'stream-removed' shows that a previous available stream has been removed from the room.
  */
+
+
+const STUN_SERVERS = [
+  { 'urls': 'stun:stun.l.google.com:19302' },
+  { 'urls': 'stun:51.250.100.5:3478' },
+]
+
+// const TURN_SERVERS = [
+//   { 'urls': 'turn:51.250.100.5:3478', 'username': 'test', 'credential': 'test123'}
+// ]
+
+const TURN_SERVERS = []
+
+
+const ReplicaState = () => {
+  return {
+    streams: ErizoMap()
+  }
+}
+
+const MasterState = () => {
+  return {
+    clients: ErizoMap()
+  }
+}
+
+const NetState = () => {
+  return {
+    ips: new Set([]),
+    conn: undefined,
+  }
+}
+
+const RelayState = () => {
+  that = EventDispatcher()
+  that.masterId = undefined
+  that.masterState = undefined
+  that.replicaState = undefined
+  that.netState = NetState()
+  return that
+}
 const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   const spec = specInput;
   const that = EventDispatcher(specInput);
@@ -30,6 +71,8 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   that.remoteStreams = ErizoMap();
   that.localStreams = ErizoMap();
   that.roomID = '';
+  that.clientId = '';
+  that.relayState = RelayState()
   that.state = DISCONNECTED;
   that.p2p = false;
   that.minConnectionQualityLevel = '';
@@ -119,11 +162,13 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       stream.failed = true;
 
       const streamFailedEvt = StreamEvent(
-        { type: 'stream-failed',
+        {
+          type: 'stream-failed',
           msg: message || 'Stream failed after connection',
           stream,
           origin,
-          wasAbleToConnect });
+          wasAbleToConnect
+        });
       that.dispatchEvent(streamFailedEvt);
       const connection = stream.pc;
 
@@ -136,6 +181,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       }
 
       if (connection && spec.singlePC) {
+        console.error("Close connection")
         that.erizoConnectionManager.maybeCloseConnection(connection, true);
       }
     }
@@ -149,7 +195,8 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           streamId: stream.getID(),
           streamIds,
           peerSocket,
-          msg });
+          msg
+        });
       },
       audio: stream.hasAudio(),
       video: stream.hasVideo(),
@@ -227,13 +274,15 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
             streamId,
             erizoId,
             msg: message,
-            browser: stream.pc && stream.pc.browser }, undefined, () => {});
+            browser: stream.pc && stream.pc.browser
+          }, undefined, () => { });
         } else {
           socket.sendSDP('connectionMessage', {
             connectionId,
             erizoId,
             msg: message,
-            browser: stream.pc && stream.pc.browser }, undefined, () => {});
+            browser: stream.pc && stream.pc.browser
+          }, undefined, () => { });
         }
       },
       connectionId,
@@ -278,6 +327,28 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           connectionOpts.callback({ type: 'failed' });
         }
       }
+      if (evt.msg.state === 'connected') {
+        let pair = connection.peerConnection.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+        let localPair = pair.local
+        fetch("https://collector.webrtc-thesis.ru/connections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // 'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: JSON.stringify({
+            ts: new Date().toISOString(),
+            clientId: 'SFU',
+            edge: {
+              targetId: that.clientId,
+              type_: "add",
+              candidateAddr: `${localPair.address}:${localPair.port}`
+            }
+          })
+        })
+          .then(() => { })
+          .catch((err) => console.error(err))
+      }
     });
   };
 
@@ -297,9 +368,53 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           connectionOpts.callback({ type: 'failed' });
         }
       }
+      if (evt.msg.state === 'connected') {
+        let pair = connection.peerConnection.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+        let remotePair = pair.remote
+        fetch("https://collector.webrtc-thesis.ru/connections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ts: new Date().toISOString(),
+            clientId: that.clientId,
+            edge: {
+              targetId: 'SFU',
+              type_: "add",
+              candidateAddr: `${remotePair.address}:${remotePair.port}`
+            }
+          })
+        })
+          .then(() => { })
+          .catch((err) => console.error(err))
+      }
     });
     stream.pc.addStream(stream);
   };
+
+  const onConnectionFailed = (evt) => {
+    console.log("OnConnectionFailed", evt)
+    fetch("https://collector.webrtc-thesis.ru/connections", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // 'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: JSON.stringify({
+        ts: new Date().toISOString(),
+        clientId: 'SFU',
+        edge: {
+          targetId: that.clientId,
+          type_: "delete",
+          candidateAddr: 'nodata'
+        }
+      })
+    })
+      .then(() => { })
+      .catch((err) => console.error(err))
+  }
+
 
   // We receive an event with a new stream in the room.
   // type can be "media" or "data"
@@ -308,14 +423,16 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     if (remoteStreams.has(arg.id)) {
       return;
     }
-    const stream = Stream(that.Connection, { streamID: arg.id,
+    const stream = Stream(that.Connection, {
+      streamID: arg.id,
       local: localStreams.has(arg.id),
       audio: arg.audio,
       video: arg.video,
       data: arg.data,
       label: arg.label,
       screen: arg.screen,
-      attributes: arg.attributes });
+      attributes: arg.attributes
+    });
     stream.room = that;
     stream.state = 'unsubscribed';
     remoteStreams.add(arg.id, stream);
@@ -407,10 +524,12 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     if (arg.streamID) {
       const stream = remoteStreams.get(arg.streamID);
       if (stream && !stream.failed) {
-        const evt = StreamEvent({ type: 'bandwidth-alert',
+        const evt = StreamEvent({
+          type: 'bandwidth-alert',
           stream,
           msg: arg.message,
-          bandwidth: arg.bandwidth });
+          bandwidth: arg.bandwidth
+        });
         stream.dispatchEvent(evt);
       }
     }
@@ -426,9 +545,11 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   // We receive an event of new data in one of the streams
   const socketOnUpdateAttributeStream = (arg) => {
     const stream = remoteStreams.get(arg.id);
-    const evt = StreamEvent({ type: 'stream-attributes-update',
+    const evt = StreamEvent({
+      type: 'stream-attributes-update',
       attrs: arg.attrs,
-      stream });
+      stream
+    });
     stream.updateLocalAttributes(arg.attrs);
     stream.dispatchEvent(evt);
   };
@@ -455,23 +576,29 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     log.info(`message: Socket disconnected, reason: lost connection to ErizoController, ${toLog()}`);
     if (that.state !== DISCONNECTED) {
       log.error(`message: Unexpected disconnection from ErizoController, ${toLog()}`);
-      const disconnectEvt = RoomEvent({ type: 'room-disconnected',
-        message: 'unexpected-disconnection' });
+      const disconnectEvt = RoomEvent({
+        type: 'room-disconnected',
+        message: 'unexpected-disconnection'
+      });
       that.dispatchEvent(disconnectEvt);
     }
   };
 
   const socketOnReconnecting = (reason) => {
     log.info(`message: Socket reconnecting, reason: lost connection to ErizoController, ${toLog()}`);
-    const reconnectingEvt = RoomEvent({ type: 'room-reconnecting',
-      message: `reconnecting - ${reason}` });
+    const reconnectingEvt = RoomEvent({
+      type: 'room-reconnecting',
+      message: `reconnecting - ${reason}`
+    });
     that.dispatchEvent(reconnectingEvt);
   };
 
   const socketOnReconnected = () => {
     log.info(`message: Socket reconnected, reason: restablished connection to ErizoController, ${toLog()}`);
-    const reconnectedEvt = RoomEvent({ type: 'room-reconnected',
-      message: 'reconnected' });
+    const reconnectedEvt = RoomEvent({
+      type: 'room-reconnected',
+      message: 'reconnected'
+    });
     that.dispatchEvent(reconnectedEvt);
   };
 
@@ -500,7 +627,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     const stream = evt.stream;
     const msg = evt.msg;
     if (stream.local) {
-      socket.sendMessage('sendDataStream', { id: stream.getID(), msg });
+      that.socket.sendMessage('sendDataStream', { id: stream.getID(), msg });
     } else {
       log.error(`message: You can not send data through a remote stream, ${stream.toLog()}, ${toLog()}`);
     }
@@ -511,7 +638,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     const attrs = evt.attrs;
     if (stream.local) {
       stream.updateLocalAttributes(attrs);
-      socket.sendMessage('updateStreamAttributes', { id: stream.getID(), attrs });
+      that.socket.sendMessage('updateStreamAttributes', { id: stream.getID(), attrs });
     } else {
       log.error(`message: You can not update attributes in a remote stream, ${stream.toLog()}, ${toLog()}`);
     }
@@ -541,7 +668,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     handlerProfile: options.handlerProfile,
   });
 
-  const populateStreamFunctions = (id, streamInput, error, callback = () => {}) => {
+  const populateStreamFunctions = (id, streamInput, error, callback = () => { }) => {
     const stream = streamInput;
     if (id === null) {
       log.error(`message: Error when publishing the stream, ${stream.toLog()}, ${toLog()}, error: ${error}`);
@@ -559,7 +686,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     callback(id);
   };
 
-  const publishExternal = (streamInput, options, callback = () => {}) => {
+  const publishExternal = (streamInput, options, callback = () => { }) => {
     const stream = streamInput;
     let type;
     let arg;
@@ -578,7 +705,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       });
   };
 
-  const publishP2P = (streamInput, options, callback = () => {}) => {
+  const publishP2P = (streamInput, options, callback = () => { }) => {
     const stream = streamInput;
     // We save them now to be used when actually publishing in P2P mode.
     stream.maxAudioBW = options.maxAudioBW;
@@ -588,14 +715,14 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     });
   };
 
-  const publishData = (streamInput, options, callback = () => {}) => {
+  const publishData = (streamInput, options, callback = () => { }) => {
     const stream = streamInput;
     socket.sendSDP('publish', createSdpConstraints('data', stream, options), undefined, (id, error) => {
       populateStreamFunctions(id, stream, error, callback);
     });
   };
 
-  const publishErizo = (streamInput, options, callback = () => {}) => {
+  const publishErizo = (streamInput, options, callback = () => { }) => {
     const stream = streamInput;
     log.debug(`message: Publishing to Erizo Normally, createOffer: ${options.createOffer}, ${toLog()}`);
     const constraints = createSdpConstraints('erizo', stream, options);
@@ -626,7 +753,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     return hasVideo;
   };
 
-  const subscribeErizo = (streamInput, optionsInput, callback = () => {}) => {
+  const subscribeErizo = (streamInput, optionsInput, callback = () => { }) => {
     const stream = streamInput;
     const options = optionsInput;
     options.maxVideoBW = options.maxVideoBW || spec.defaultVideoBW;
@@ -640,7 +767,8 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       (options.encryptTransport === undefined) ? true : options.encryptTransport;
 
     stream.checkOptions(options);
-    const constraint = { streamId: stream.getID(),
+    const constraint = {
+      streamId: stream.getID(),
       audio: options.audio && stream.hasAudio(),
       video: getVideoConstraints(stream, options.video),
       maxVideoBW: options.maxVideoBW,
@@ -667,12 +795,14 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     });
   };
 
-  const subscribeData = (streamInput, options, callback = () => {}) => {
+  const subscribeData = (streamInput, options, callback = () => { }) => {
     const stream = streamInput;
     socket.sendSDP('subscribe',
-      { streamId: stream.getID(),
+      {
+        streamId: stream.getID(),
         data: options.data,
-        metadata: options.metadata },
+        metadata: options.metadata
+      },
       undefined, (result, error) => {
         if (result === null) {
           log.error(`message: Error subscribing to stream, ${stream.toLog()}, ${toLog()}, error: ${error}`);
@@ -760,14 +890,16 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       const streamIndices = Object.keys(streams);
       for (let index = 0; index < streamIndices.length; index += 1) {
         const arg = streams[streamIndices[index]];
-        stream = Stream(that.ConnectionHelpers, { streamID: arg.id,
+        stream = Stream(that.ConnectionHelpers, {
+          streamID: arg.id,
           local: false,
           audio: arg.audio,
           video: arg.video,
           data: arg.data,
           label: arg.label,
           screen: arg.screen,
-          attributes: arg.attributes });
+          attributes: arg.attributes
+        });
         stream.room = that;
         stream.state = 'unsubscribed';
         streamList.push(stream);
@@ -776,6 +908,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
       // 3 - Update RoomID
       that.roomID = roomId;
+      that.clientId = response.clientId;
 
       log.info(`message: Connected to room, ${toLog()}`);
 
@@ -792,15 +925,17 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   that.disconnect = () => {
     log.info(`message: Disconnection requested, ${toLog()}`);
     // 1- Disconnect from room
-    const disconnectEvt = RoomEvent({ type: 'room-disconnected',
-      message: 'expected-disconnection' });
+    const disconnectEvt = RoomEvent({
+      type: 'room-disconnected',
+      message: 'expected-disconnection'
+    });
     that.clientIntiatedDisconnection = true;
     that.dispatchEvent(disconnectEvt);
   };
 
   // It publishes the stream provided as argument. Once it is added it throws a
   // StreamEvent("stream-added").
-  that.publish = (streamInput, optionsInput = {}, callback = () => {}) => {
+  that.publish = (streamInput, optionsInput = {}, callback = () => { }) => {
     const stream = streamInput;
     const options = optionsInput;
 
@@ -853,7 +988,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   // Returns callback(id, error)
-  that.startRecording = (stream, callback = () => {}) => {
+  that.startRecording = (stream, callback = () => { }) => {
     if (stream === undefined) {
       log.error(`message: Trying to start recording on an invalid stream, ${stream.toLog()}, ${toLog()}`);
       callback(undefined, 'Invalid Stream');
@@ -873,7 +1008,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   // Returns callback(id, error)
-  that.stopRecording = (recordingId, callback = () => {}) => {
+  that.stopRecording = (recordingId, callback = () => { }) => {
     socket.sendMessage('stopRecorder', { id: recordingId }, (result, error) => {
       if (result === null) {
         log.error(`message: Error on stop recording, recordingId: ${recordingId}, ${toLog()}, error: ${error}`);
@@ -886,7 +1021,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   // It unpublishes the local stream in the room, dispatching a StreamEvent("stream-removed")
-  that.unpublish = (streamInput, callback = () => {}) => {
+  that.unpublish = (streamInput, callback = () => { }) => {
     const stream = that.localStreams.get(streamInput.getID());
     // Unpublish stream from Erizo-Controller
     if (stream && stream.local) {
@@ -913,7 +1048,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       }
       localStreams.remove(stream.getID());
 
-      stream.getID = () => {};
+      stream.getID = () => { };
       stream.off('internal-send-data', sendDataSocketFromStreamEvent);
       stream.off('internal-set-attributes', updateAttributesFromStreamEvent);
     } else {
@@ -931,7 +1066,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   // It subscribe to a remote stream and draws it inside the HTML tag given by the ID='elementID'
-  that.subscribe = (streamInput, optionsInput = {}, callback = () => {}) => {
+  that.subscribe = (streamInput, optionsInput = {}, callback = () => { }) => {
     const stream = that.remoteStreams.get(streamInput.getID());
     const options = optionsInput;
 
@@ -996,7 +1131,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   // It unsubscribes from the stream, removing the HTML element.
-  that.unsubscribe = (streamInput, callback = () => {}) => {
+  that.unsubscribe = (streamInput, callback = () => { }) => {
     const stream = that.remoteStreams.get(streamInput.getID());
     // Unsubscribe from stream
     if (socket !== undefined) {
@@ -1029,7 +1164,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     }
   };
 
-  that.getStreamStats = (stream, callback = () => {}) => {
+  that.getStreamStats = (stream, callback = () => { }) => {
     if (!socket) {
       return 'Error getting stats - no socket';
     }
@@ -1076,9 +1211,558 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     });
   };
 
+  const reinitRelayState = () => {
+    console.info("Start reinitting relay state")
+    if (that.relayState.masterState !== undefined) {
+      let clients = that.relayState.masterState.clients
+      clients.forEach(client => {
+        client.forEach(stream => {
+          stream.close()
+        })
+      })
+    }
+    if (that.relayState.replicaState !== undefined) {
+      let streams = that.relayState.replicaState.streams
+      streams.forEach(stream => {
+        stream.close()
+      })
+    }
+    that.relayState.masterState = MasterState()
+    that.relayState.replicaState = ReplicaState()
+    console.info("Finish reinitting relay state")
+  }
+
+  const onBecomeLeaderIntent = () => {
+    if (that.relayState.netState.ips === undefined) {
+      log.warning("Subnet IP is not provided. Skip intent")
+      return
+    }
+    if (that.relayState.masterId !== that.clientId) {
+      reinitRelayState()
+    }
+    that.relayState.masterId = that.clientId
+    that.socket.sendMessage('onBecomeLeaderIntent', { 'clientId': that.clientId, 'netIps': Array.from(that.relayState.netState.ips) })
+  }
+
+  const ensureNotLocal = (address) => {
+    if (address.endsWith(".local")) {
+      return false
+    }
+    if (address.includes(":")) {
+      return false
+    }
+    return true
+  }
+
+  const closeEnough = (clientAddresses, masterAddresses, bitsToConsider) => {
+    let _closeEnough = (clientAddress, masterAddress, bitsToConsider) => {
+      bitsToConsider = bitsToConsider - 24
+      if (bitsToConsider <= 0) {
+        return false
+      }
+      let clientParts = clientAddress.split(".")
+      let masterParts = masterAddress.split(".")
+      for (let i = 0; i < 3; i++) {
+        if (clientParts[i] !== masterParts[i]) {
+          return false
+        }
+      }
+      let clientNum = parseInt(clientParts[3]).toString(2)
+      let masterNum = parseInt(masterParts[3]).toString(2)
+      for (let i = 0; i < bitsToConsider; i++) {
+        if (clientNum[i] !== masterNum[i]) {
+          return false
+        }
+      }
+      return true
+    }
+
+    for (let clientAddress of clientAddresses) {
+      for (let masterAddress of masterAddresses) {
+        if (_closeEnough(clientAddress, masterAddress, bitsToConsider)) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  const createNewRTCPeerConn = (targetId, streamId) => {
+    let conn = new RTCPeerConnection(
+      {
+        'iceServers': STUN_SERVERS.concat(TURN_SERVERS),
+        'bundlePolicy': 'max-compat',
+        'iceCandidatePoolSize': 2,
+        'rtcpMuxPolicy': 'negotiate',
+      }
+    )
+    conn.onicecandidateerror = errorEvent => {
+      console.error(errorEvent)
+    }
+    conn.oniceconnectionstatechange = change => {
+      console.error(change)
+    }
+    conn.onicecandidate = iceEvent => {
+      if (iceEvent.candidate) {
+        console.log(`Send ice candidate to ${targetId}:${streamId}`)
+        that.socket.sendMessage(
+          'sendIceCandidate',
+          {
+            'sourceId': that.clientId,
+            'targetId': targetId,
+            'streamId': streamId,
+            'iceCandidate': iceEvent.candidate
+          }
+        )
+      }
+    }
+    return conn
+  }
+
+  const onReceiveBecomeLeaderIntent = (event) => {
+    event = event.args[0]
+    if (event.clientId === that.clientId) {
+      return
+    }
+    let ips = Array.from(that.relayState.netState.ips)
+    if (!closeEnough(ips, event.netIps, 25)) {
+      log.warning(`Nets do not match: master's net is ${event.netIps}, client's is ${ips}`)
+      return
+    }
+    console.log("Receive become leader intent:", event)
+    if (that.relayState.masterId !== event.clientId) {
+      reinitRelayState()
+      that.relayState.masterId = event.clientId
+    }
+    function handleStream(stream) {
+      if (that.localStreams.has(stream.getID())) {
+        return
+      }
+
+      if (that.relayState.replicaState.streams.has(stream.getID())) {
+        return
+      }
+
+      let conn = createNewRTCPeerConn(event.clientId, stream.getID())
+      that.relayState.replicaState.streams.add(stream.getID(), conn)
+
+      conn.ontrack = (event) => {
+        let track = event.track
+        track.onunmute = (ev) => {
+          console.log('On track event', ev)
+          let containerId = `stream${stream.getID()}`
+          let videoContainer = document.getElementById(containerId)
+          if (videoContainer === null) {
+            return
+          }
+          let newStream = event.streams[0]
+          console.log("Substitute", containerId, "with", newStream)
+          videoContainer.srcObject = newStream
+
+        }
+      }
+      conn.onconnectionstatechange = (ev) => {
+        if (conn.iceConnectionState === 'disconnected') {
+          that.relayState.masterId = undefined
+          return
+        }
+        if (conn.iceConnectionState === 'connected') {
+          let mcuStream = that.remoteStreams.get(stream.getID())
+          if (mcuStream === undefined) {
+            return
+          }
+          let pc = mcuStream.pc.peerConnection
+          if (pc !== undefined) {
+            console.warn(`Close stream ${stream.getID()}`)
+            pc.close()
+          }
+          let pair = conn.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+          let localPair = pair.local
+          fetch("https://collector.webrtc-thesis.ru/connections", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ts: new Date().toISOString(),
+              clientId: event.clientId,
+              edge: {
+                targetId: that.clientId,
+                type_: "add",
+                candidateAddr: `${localPair.address}:${localPair.port}`
+              }
+            })
+          })
+            .then(() => { })
+            .catch((err) => console.error(err))
+        }
+      }
+      conn.createOffer({ 'offerToReceiveVideo': true })
+        .then((offer) => {
+          conn.setLocalDescription(offer)
+            .then(() => {
+              that.socket.sendMessage(
+                'sendRelayRequest',
+                {
+                  'streamId': stream.getID(),
+                  'consumerId': that.clientId,
+                  'offer': conn.localDescription,
+                }
+              )
+            })
+            .catch((err) => {
+              console.error(err)
+              console.warn(localDescription)
+              console.warn(conn)
+              console.warn(offer)
+              console.warn(outerConn)
+            })
+        })
+        .catch((err) => {
+          console.error(err)
+          console.warn(conn)
+        })
+    }
+    that.remoteStreams.forEach((stream) => {
+      handleStream(stream)
+    })
+  }
+
+  const onReceiveRelayRequest = (event) => {
+    event = event.args[0]
+    if (that.clientId !== that.relayState.masterId) {
+      return
+    }
+    console.log("On receive relay request", event)
+    let clients = that.relayState.masterState.clients
+    if (!clients.has(event.consumerId)) {
+      clients.add(event.consumerId, ErizoMap())
+    }
+    let stream = undefined
+    that.remoteStreams.forEach(remoteStream => {
+      if (remoteStream.getID() === event.streamId) {
+        stream = remoteStream
+      }
+    })
+    that.localStreams.forEach(localStream => {
+      if (localStream.getID() === event.streamId) {
+        stream = localStream
+      }
+    })
+    if (stream === undefined) {
+      console.error("Cannot find stream for id", event.streamId)
+      return
+    }
+
+    let conn = createNewRTCPeerConn(event.consumerId, event.streamId)
+    clients.get(event.consumerId).add(event.streamId, conn)
+
+    stream.pc.streamsMap.forEach(str => {
+      str = str.stream
+      console.log(str)
+      for (let track of str.getTracks()) {
+        console.log(`Add track to ${event.consumerId}:${event.streamId}`, track)
+        conn.addTrack(track, str)
+      }
+    })
+    conn.setRemoteDescription(event.offer)
+      .then(() => { })
+      .catch((err) => console.error(err))
+    conn.createAnswer().then(answer => {
+      conn.setLocalDescription(answer)
+      that.socket.sendMessage(
+        'sendRelayResponse',
+        {
+          'consumerId': event.consumerId,
+          'streamId': event.streamId,
+          'answer': answer,
+        }
+      )
+    })
+  }
+
+  const onReceiveRelayResponse = (event) => {
+    event = event.args[0]
+    if (event.consumerId !== that.clientId) {
+      return
+    }
+    console.log("Relay response", event)
+    let conn = that.relayState.replicaState.streams.get(event.streamId)
+    if (conn.signalingState === "stable") {
+      return
+    }
+    conn.setRemoteDescription(new RTCSessionDescription(event.answer))
+      .then(() => { })
+      .catch((err) => console.error(err))
+  }
+
+  const onReceiveIceCandidate = (event) => {
+    event = event.args[0]
+    if (that.clientId === event.sourceId) {
+      return
+    }
+    if (that.clientId !== event.targetId) {
+      return
+    }
+    console.log("On receive ice candidate", event)
+    let iceCandidate = new RTCIceCandidate(event.iceCandidate)
+    let conn = undefined
+    if (that.relayState.masterId === that.clientId) {
+      let clientStreams = that.relayState.masterState.clients.get(event.sourceId)
+      if (clientStreams === undefined) {
+        console.error("Cannot find client", event.sourceId)
+        return
+      }
+      conn = clientStreams.get(event.streamId)
+    } else {
+      conn = that.relayState.replicaState.streams.get(event.streamId)
+    }
+    if (conn === undefined) {
+      console.error("Cannot find stream for client", event.sourceId, event.streamId)
+    }
+    conn.addIceCandidate(iceCandidate)
+      .then(() => { console.info(`Ice candidate applied`) })
+      .catch((err) => console.error(err))
+  }
+
+  const setFoundAddresses = () => {
+    let element = document.getElementById('foundAddresses')
+    if (element === null) {
+      return
+    }
+    let ips = that.relayState
+    if (ips === undefined) {
+      return
+    }
+    ips = ips.netState
+    if (ips === undefined) {
+      return
+    }
+    ips = ips.ips
+    if (ips === undefined) {
+      ips = null
+    }
+    element.innerText = JSON.stringify(Array.from(ips))
+  }
+
+  const setCurrentID = () => {
+    let currentID = document.getElementById("currentID")
+    if (currentID !== null) {
+      currentID.innerText = that.clientId
+    }
+
+  }
+
+  const setCurrentMaster = () => {
+    let state = that.relayState
+    let currentMaster = document.getElementById("currentMaster")
+    if (currentMaster !== null) {
+      currentMaster.innerText = state.masterId
+    }
+  }
+
+  const setCurrentRemoteCandidate = () => {
+    let streamList = new Set();
+    for (let stream of that.remoteStreams.keys()) {
+      streamList.add(stream)
+    }
+    for (let streamId of Array.from(streamList)) {
+      let container = document.getElementById(`candidate_${streamId}`)
+      if (container === null) {
+        continue
+      }
+      let found = false
+      let stream = undefined
+      if (that.relayState.masterId === undefined || that.relayState.masterId === that.clientId) {
+        stream = that.remoteStreams.get(streamId).pc.peerConnection
+      } else {
+        let replicaState = that.relayState.replicaState
+        if (replicaState !== undefined) {
+          stream = replicaState.streams.get(streamId)
+          if (
+            stream === undefined ||
+            stream.getReceivers()[0].transport === null ||
+            stream.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair() === null
+          ) {
+            stream = that.remoteStreams.get(streamId).pc.peerConnection
+          }
+        }
+      }
+      if (stream === undefined) {
+        continue
+      }
+      let pair = stream.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+      if (pair === null) {
+        pair = {
+          "remote": {
+            "address": undefined,
+            "port": undefined,
+          }
+        }
+      }
+      container.innerText = `remote: ${pair.remote.address}:${pair.remote.port}`
+
+      if (found) {
+        return
+      }
+    }
+  }
+
+  const discoverRoomIP = () => {
+    let conn = new RTCPeerConnection(
+      {
+        'iceServers': STUN_SERVERS.concat([])
+      }
+    )
+    that.relayState.netState.conn = conn
+    conn.onicecandidate = (event) => {
+      if (!event.candidate) {
+        return
+      }
+      let notLocalAddr = ensureNotLocal(event.candidate.address)
+      console.log("Address:", event.candidate.address, "result: ", notLocalAddr)
+      if (notLocalAddr) {
+        that.relayState.netState.ips.add(event.candidate.address)
+        console.log("Addresses:", that.relayState.netState.ips)
+
+      }
+    }
+    conn.createOffer({ 'offerToReceiveVideo': true }).then((offer) => {
+      conn.setLocalDescription(offer)
+    })
+  }
+
+  const notifyAboutMaster = () => {
+    if (that.clientId !== that.relayState.masterId) {
+      return
+    }
+    onBecomeLeaderIntent()
+  }
+
+  const tryBecomeMaster = () => {
+    if (that.relayState.masterId !== undefined) {
+      return
+    }
+    onBecomeLeaderIntent()
+  }
+
+  let prevCons = { 'ts': undefined }
+
+  const pushStats = async () => {
+    let cons = {}
+    that.localStreams.forEach((stream) => {
+      if (stream.pc !== undefined) {
+        cons[stream.stream.id] = stream.pc.peerConnection.getStats()
+      }
+    })
+    that.remoteStreams.forEach((stream) => {
+      if (stream.local !== true) {
+        cons[stream.stream.id] = stream.pc.peerConnection.getStats()
+      }
+    })
+    if (that.clientId === that.relayState.masterId) {
+      for (let clientId of that.relayState.masterState.clients.keys()) {
+        let streams = that.relayState.masterState.clients.get(clientId)
+        for (let streamId of streams.keys()) {
+          let stream = streams.get(streamId)
+          cons[streamId] = stream.getStats()
+        }
+      }
+    } else if (that.relayState.replicaState !== undefined) {
+      for (let streamId of that.relayState.replicaState.streams.keys()) {
+        let stream = that.relayState.replicaState.streams.get(streamId)
+        cons[streamId] = stream.getStats()
+      }
+    }
+
+    let newStats = {
+      'totalIn': 0,
+      'totalOut': 0,
+    }
+    for (const [streamId, promise] of Object.entries(cons)) {
+      let prevIn = 0
+      let prevOut = 0
+      if (prevCons[streamId] === undefined) {
+        prevCons[streamId] = {
+          'bytesReceived': undefined,
+          'bytesSent': undefined
+        }
+      }
+      let v = prevCons[streamId].bytesReceived
+      if (v !== undefined) {
+        prevIn = v
+      }
+      v = prevCons[streamId].bytesSent
+      if (v !== undefined) {
+        prevOut = v
+      }
+      report = await promise
+      for (let entry of report.values()) {
+        if (entry.type === "inbound-rtp") {
+          if (entry.bytesReceived !== undefined) {
+            newStats.totalIn += entry.bytesReceived - prevIn
+            prevCons[streamId].bytesReceived = entry.bytesReceived
+          }
+        }
+        if (entry.type === "outbound-rtp") {
+          if (entry.bytesSent !== undefined) {
+            newStats.totalOut += entry.bytesSent - prevOut
+            prevCons[streamId].bytesSent = entry.bytesSent
+          }
+        }
+      }
+    }
+
+    let ts = new Date()
+    let timeElapsed = 3
+    if (prevCons.ts !== undefined) {
+      timeElapsed = Math.abs(ts - prevCons.ts) / 1000
+    }
+    prevCons.ts = ts
+    newStats.totalIn /= timeElapsed
+    newStats.totalIn /= 128
+    newStats.totalOut /= timeElapsed
+    newStats.totalOut /= 128
+
+    fetch("https://collector.webrtc-thesis.ru/metrics", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ts: new Date().toISOString(),
+        clientId: that.clientId,
+        metric_name: 'NETIN',
+        metric_value: newStats.totalIn,
+      })
+    })
+      .then(() => { })
+      .catch((err) => console.error(err))
+
+    fetch("https://collector.webrtc-thesis.ru/metrics", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ts: new Date().toISOString(),
+        clientId: that.clientId,
+        metric_name: 'NETOUT',
+        metric_value: newStats.totalOut,
+      }),
+    })
+      .then(() => { })
+      .catch((err) => console.error(err))
+  }
 
   that.on('room-disconnected', clearAll);
+  that.on('onBecomeLeaderIntent', onBecomeLeaderIntent)
+  that.on('connection-failed', onConnectionFailed)
 
+  socket.on('leaderIntent', onReceiveBecomeLeaderIntent)
+  socket.on('relayRequest', onReceiveRelayRequest)
+  socket.on('relayResponse', onReceiveRelayResponse)
+  socket.on('iceCandidate', onReceiveIceCandidate)
   socket.on('onAddStream', socketEventToArgs.bind(null, socketOnAddStream));
   socket.on('stream_message_erizo', socketEventToArgs.bind(null, socketOnStreamMessageFromErizo));
   socket.on('stream_message_p2p', socketEventToArgs.bind(null, socketOnStreamMessageFromP2P));
@@ -1094,7 +1778,20 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   socket.on('reconnected', socketEventToArgs.bind(null, socketOnReconnected));
   socket.on('connection_failed', socketEventToArgs.bind(null, socketOnICEConnectionFailed));
   socket.on('error', socketEventToArgs.bind(null, socketOnError));
+  discoverRoomIP()
 
+  setInterval(notifyAboutMaster, 5000)
+  // setInterval(tryBecomeMaster, 15000)
+  setInterval(() => {
+    setFoundAddresses()
+    setCurrentID()
+    setCurrentMaster()
+    setCurrentRemoteCandidate()
+  }, 1000)
+
+  setInterval(async () => {
+    await pushStats()
+  }, 3000)
   return that;
 };
 

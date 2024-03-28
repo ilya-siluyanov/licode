@@ -1,0 +1,6 @@
+- hosts: all
+  become: true
+  roles:
+    - atop
+  vars:
+    project_root: /home/ilyasiluyanov/atop

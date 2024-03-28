@@ -1,0 +1,6 @@
+---
+roles:
+  - name: geerlingguy.docker
+    version: master
+    scm: git
+    src: git@github.com:geerlingguy/ansible-role-docker.git

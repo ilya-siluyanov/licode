@@ -1,0 +1,66 @@
+- name: Gather the package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Install GNUPG
+  become: true
+  apt:
+    name:
+      - gnupg
+      - ca-certificates
+    state: present
+
+- name: Add Docker GPG apt Key
+  become: true
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker Repository
+  become: true
+  ansible.builtin.copy:
+    content: deb https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable
+    dest: /etc/apt/sources.list.d/docker.list
+    mode: u=rw,g=r,o=r
+
+- name: Install docker & docker-compose
+  become: true
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+      - python3-pip
+    state: present
+
+- name: Add current user to docker group
+  become: true
+  ansible.builtin.user:
+    user: "{{ ansible_user }}"
+    groups:
+      - docker
+    append: true
+
+- name: Pip install docker for Ansible's docker_login and docker_service modules
+  ansible.builtin.pip:
+    name: docker-compose
+- name: Setup daemon
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "proxies": {
+          "https-proxy": "socks5://proxy.huecker.io:1080",
+          "no-proxy": "ghcr.io,*.test.example.com,.example.org,127.0.0.0/8"
+        }
+      }
+
+- name: Make sure docker is running
+  become: true
+  ansible.builtin.systemd:
+    name: docker
+    enabled: yes
+    state: restarted

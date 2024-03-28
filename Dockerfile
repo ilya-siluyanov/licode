@@ -44,4 +44,5 @@ RUN cat RELEASE
 
 WORKDIR /opt
 
+COPY licode_config.js /opt/licode/licode_config.js
 ENTRYPOINT ["./licode/extras/docker/initDockerLicode.sh"]

@@ -15,4 +15,6 @@ cp $ROOT/nuve/nuveClient/dist/nuve.js $EXTRAS/basic_example/
 
 nvm use
 cd $EXTRAS/basic_example
-node basicServer.js &
+while true; do
+    node basicServer.js
+done

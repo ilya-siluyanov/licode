@@ -1,0 +1,9 @@
+services:
+  chrome:
+    restart: unless-stopped
+    image: selenium/standalone-chrome:4.20.0-20240505
+    network_mode: host
+  client:
+    restart: unless-stopped
+    image: ilyasiluyanov/webrtc-client:latest
+    network_mode: host

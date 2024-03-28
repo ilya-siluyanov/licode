@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-set -e
 
 SCRIPT=`pwd`/$0
 FILENAME=`basename $SCRIPT`
@@ -13,6 +12,6 @@ NVM_CHECK="$LICODE_ROOT"/scripts/checkNvm.sh
 
 cd $ROOT/erizoController
 nvm use
-node erizoController.js &
-
-cd $CURRENT_DIR
+while true; do
+    node erizoController.js
+done

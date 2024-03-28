@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -e
 
 SCRIPT=`pwd`/$0
 FILENAME=`basename $SCRIPT`
@@ -14,6 +13,7 @@ export LD_LIBRARY_PATH="$LICODE_ROOT/build/libdeps/build/lib"
 
 cd $ROOT/erizoAgent
 nvm use
-node erizoAgent.js $* &
-
-cd $CURRENT_DIR
+while true; do
+    ps aux | grep erizoJS | awk '{print $2}' | xargs kill
+    node erizoAgent.js $*
+done

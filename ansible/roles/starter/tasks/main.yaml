@@ -1,0 +1,8 @@
+- name: Start service
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_root }}"
+    remove_orphans: true
+    state: restarted
+- name: pause for 15 seconds
+  pause:
+    seconds: 15

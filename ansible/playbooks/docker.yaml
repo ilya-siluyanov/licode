@@ -1,0 +1,6 @@
+- hosts: all
+  become: true
+  roles:
+    - docker
+  vars:
+    ansible_user: ilyasiluyanov
