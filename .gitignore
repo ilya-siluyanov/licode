@@ -1,5 +1,4 @@
 build/
-licode_config.js
 bw_distributor_config.js
 extras/basic_example/node_modules
 extras/basic_example/public/erizo.js
@@ -33,4 +32,8 @@ erizo/conanbuildinfo.cmake
 erizo/conanbuildinfo.txt
 erizo/conaninfo.txt
 erizo/graph_info.json
-
+*.cmake
+venv
+metrics_collector/data
+.env
+__pycache__

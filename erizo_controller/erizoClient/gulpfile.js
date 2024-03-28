@@ -51,10 +51,11 @@ gulp.task('lint', () => gulp.src(config.paths.js)
   .pipe(plugins.eslint())
   .pipe(plugins.eslint.format())
   .pipe(plugins.eslint.failAfterError()));
+// gulp.task('lint', () => { } );
 
 targets.forEach(
   (target) => {
-    const targetTasks = ['lint'];
+    const targetTasks = [];
     createTasks(target, targetTasks, tasks);
     createTasks(target, watchTasks, debugTasks);
     gulp.task(target, gulp.series(...targetTasks));

@@ -11,6 +11,7 @@ node_modules/
 erizo/build
 erizoAPI/build
 erizoAPI/.lock-wscript
+erizo_controller/node_modules
 erizo_controller/erizoClient/dist/erizofc.js
 erizo_controller/erizoClient/build/erizofc.js
 erizo_controller/erizoClient/dist/erizo.js
@@ -34,3 +35,6 @@ libdeps/
 scripts/libdeps/
 spine/erizofc.js
 site
+client
+metrics_collector
+venv

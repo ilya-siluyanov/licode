@@ -1,0 +1,14 @@
+services:
+{% for i in range(7) %}
+  chrome{{ i }}:
+    restart: unless-stopped
+    image: selenium/standalone-chrome:4.20.0-20240505
+    logging:
+      driver: none
+  client{{ i }}:
+    entrypoint: python main.py --remote --path http://chrome{{i}}:4444
+    restart: unless-stopped
+    image: ilyasiluyanov/webrtc-client:latest
+    logging:
+      driver: none
+{% endfor %}

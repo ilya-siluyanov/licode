@@ -51,13 +51,58 @@ class Client extends events.EventEmitter {
     this.socketEventListeners.set('clientDisconnection', this.onClientDisconnection.bind(this));
     this.socketEventListeners.set('setStreamPriorityStrategy', this.onSetStreamPriorityStrategy.bind(this));
     this.socketEventListeners.set('setConnectionTargetBandwidth', this.onSetConnectionTargetBandwidth.bind(this));
+    this.socketEventListeners.set('onBecomeLeaderIntent', this.onBecomeLeaderIntent.bind(this));
+    this.socketEventListeners.set('sendRelayRequest', this.onSendRelayRequest.bind(this));
+    this.socketEventListeners.set('sendRelayResponse', this.onSendRelayResponse.bind(this));
+    this.socketEventListeners.set('sendIceCandidate', this.onSendIceCandidate.bind(this));
     this.socketEventListeners.forEach((value, key) => {
       this.channel.socketOn(key, value);
     });
     this.channel.on('disconnect', this.onDisconnect.bind(this));
   }
+  onBecomeLeaderIntent(event) {
+    this.room.forEachClient((client) => {
+      if (this.id === client.id) {
+        return
+      }
+      client.channel.socket.emit('leaderIntent', event)
+    })
+  }
+
+  onSendRelayRequest(event) {
+    this.room.forEachClient((client) => {
+      if (this.id === client.id) {
+        return
+      }
+      client.channel.socket.emit('relayRequest', event)
+    })
+  }
+
+  onSendRelayResponse(event) {
+    this.room.forEachClient((client) => {
+      if (this.id === client.id) {
+        return
+      }
+      if (event.consumerId !== client.id) {
+        return
+      }
+      client.channel.socket.emit('relayResponse', event)
+    })
+  }
+
+  onSendIceCandidate(event) {
+    this.room.forEachClient((client) => {
+      if (this.id === client.id) {
+        return
+      }
+      if (event.targetId !== client.id) {
+        return
+      }
+      client.channel.socket.emit('iceCandidate', event)
+    })
+  }
+
   stopListeningToSocketEvents() {
-    log.debug(`message: Removing listeners to socket events, client.id: ${this.id}`);
     this.socketEventListeners.forEach((value, key) => {
       this.channel.socketRemoveListener(key, value);
     });

@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: licode
+    restart: unless-stopped
+    entrypoint: mongod --nojournal --dbpath /host/mongo/db --logpath /host/mongo/logs/mongo.log
+    volumes:
+      - ./build/mongo:/host/mongo
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 1Gb
+    ports:
+      - 27017:27017
+  rabbitmq:
+    image: licode
+    restart: unless-stopped
+    entrypoint: rabbitmq-server > /host/rabbitmq/logs/rabbit.log
+    volumes:
+      - ./build/rabbitmq:/host/rabbitmq
+    ports:
+      - 5672:5672
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 1Gb
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  # nuve:
+  #   image: licode
+  #   restart: unless-stopped
+  #   working_dir: /opt/licode/nuve/nuveAPI
+  #   entrypoint: bash /opt/licode/scripts/docker/runNuve.sh
+  #   volumes:
+  #     - ./licode_config.js:/opt/licode/licode_config.js
+  #     - ./scripts/docker/runNuve.sh:/opt/licode/scripts/docker/runNuve.sh
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: 1
+  #         memory: 1Gb
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy

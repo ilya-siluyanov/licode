@@ -41,15 +41,20 @@ const createSubscriberContainer = (stream) => {
   slideshowButton.textContent = 'Toggle Slideshow';
   slideshowButton.setAttribute('style', 'float:left;');
   stream.slideshowMode = false;
+  const chosenIceCandidateText = document.createElement("span")
+  chosenIceCandidateText.setAttribute('style', 'float:left;');
+  chosenIceCandidateText.id = `candidate_${stream.getID()}`
+  chosenIceCandidateText.classList.add("candidatetext")
 
   container.appendChild(unsubscribeButton);
   container.appendChild(slideshowButton);
+  container.appendChild(chosenIceCandidateText)
   unsubscribeButton.onclick = () => {
     room.unsubscribe(stream);
     document.getElementById('videoContainer').removeChild(container);
   };
   slideshowButton.onclick = () => {
-    stream.updateConfiguration({ slideShowMode: !stream.slideshowMode }, () => {});
+    stream.updateConfiguration({ slideShowMode: !stream.slideshowMode }, () => { });
     stream.slideshowMode = !stream.slideshowMode;
   };
   document.getElementById('videoContainer').appendChild(container);
@@ -157,11 +162,13 @@ function toggleSlideShowMode() {
 
 // eslint-disable-next-line no-unused-vars
 const publish = (video, audio, screen) => {
-  const config = { audio,
+  const config = {
+    audio,
     video,
     data: true,
     screen,
-    attributes: {} };
+    attributes: {}
+  };
   const stream = Erizo.Stream(config);
   const index = localStreamIndex;
   localStreamIndex += 1;
@@ -187,12 +194,20 @@ const startBasicExample = () => {
   document.getElementById('publishOnlyAudio').disabled = false;
   document.getElementById('startWarning').hidden = true;
   document.getElementById('startButton').hidden = true;
+  document.getElementById('toggleMaster').onclick = (_) => {
+    room.emit({ 'type': 'onBecomeLeaderIntent' })
+  }
   console.log('Selected Room', configFlags.room, 'of type', configFlags.type);
-  const config = { audio: true,
+  const config = {
+    audio: true,
     video: !configFlags.onlyAudio,
+    audio: false,
     data: true,
     screen: configFlags.screen,
-    attributes: {} };
+    videoSize: [640, 480, 640, 480],
+    videoFrameRate: 30,
+    attributes: {}
+  };
   // If we want screen sharing we have to put our Chrome extension id.
   // The default one only works in our Lynckia test servers.
   // If we are not using chrome, the creation of the stream will fail regardless.
@@ -217,11 +232,13 @@ const startBasicExample = () => {
     req.send(JSON.stringify(roomData));
   };
 
-  const roomData = { username: `user ${parseInt(Math.random() * 100, 10)}`,
+  const roomData = {
+    username: `user ${parseInt(Math.random() * 100, 10)}`,
     role: 'presenter',
     room: configFlags.room,
     type: configFlags.type,
-    mediaConfiguration: configFlags.mediaConfiguration };
+    mediaConfiguration: configFlags.mediaConfiguration
+  };
 
   createToken(roomData, (response) => {
     const token = response;
@@ -263,7 +280,6 @@ const startBasicExample = () => {
         }
       });
     };
-    room.on('connection-failed', console.log.bind(console));
 
     room.addEventListener('room-connected', (roomEvent) => {
       const options = { metadata: { type: 'publisher' } };
