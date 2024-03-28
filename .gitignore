@@ -33,4 +33,4 @@ erizo/conanbuildinfo.cmake
 erizo/conanbuildinfo.txt
 erizo/conaninfo.txt
 erizo/graph_info.json
-
+*.cmake

@@ -19,6 +19,26 @@ const log = Logger.module('Room');
  * Event 'stream-added' indicates that there is a new stream available in the room.
  * Event 'stream-removed' shows that a previous available stream has been removed from the room.
  */
+
+const ReplicaState = () => {
+  return {
+    streams: ErizoMap()
+  }
+}
+
+const MasterState = () => {
+  return {
+    clients: ErizoMap()
+  }
+}
+
+const RelayState = () => {
+  that = EventDispatcher()
+  that.masterId = undefined
+  that.masterState = undefined
+  that.replicaState = undefined
+  return that
+}
 const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   const spec = specInput;
   const that = EventDispatcher(specInput);
@@ -29,7 +49,10 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   that.remoteStreams = ErizoMap();
   that.localStreams = ErizoMap();
+  that.relayingStreams = ErizoMap();
   that.roomID = '';
+  that.clientID = '';
+  that.relayState = RelayState()
   that.state = DISCONNECTED;
   that.p2p = false;
   that.minConnectionQualityLevel = '';
@@ -776,6 +799,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
       // 3 - Update RoomID
       that.roomID = roomId;
+      that.clientID = response.clientId;
 
       log.info(`message: Connected to room, ${toLog()}`);
 
@@ -1076,9 +1100,169 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     });
   };
 
+  const onBecomeLeaderIntent = (_) => {
+    that.relayState = RelayState()
+    that.masterId = that.clientId
+    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientID})
+  }
+
+  const onReceiveBecomeLeaderIntent = (event) => {
+    console.log("Receive become leader intent:", event)
+    event = event.args[0]
+    if (event.clientId === that.clientID) {
+      return
+    }
+    that.relayState = RelayState()
+    that.masterId = that.clientId
+    that.relayState.replicaState = ReplicaState()
+    that.remoteStreams.forEach((stream) => {
+      let conn = RTCPeerConnection(
+        {
+          'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
+        }
+      )
+      conn.addEventListener('track', (event) => {
+        event.streams.forEach(str => {
+          let containerId = `stream${stream.getID()}`
+          let videoContainer = document.getElementById(containerId)
+          if (videoContainer === null) {
+            return
+          }
+          console.log("Substitute", containerId, "with", str)
+          videoContainer.srcObject = str
+          console.log(str)
+        })
+      })
+      conn.onicecandidate = event => {
+        if (event.candidate) {
+          socket.sendMessage(
+            'sendIceCandidate',
+            {
+              'clientId': that.clientID,
+              'streamId': stream.getID(),
+              'iceCandidate': event.candidate
+            }
+          )
+        }
+      }
+      that.relayState.replicaState.streams.add(stream.getID(), conn)
+      conn.createOffer({'offerToReceiveVideo': true}).then((offer) => {
+        conn.setLocalDescription(offer)
+        console.log("Stream", stream)
+        socket.sendMessage(
+          'sendRelayRequest',
+          {
+            'streamId': stream.getID(),
+            'consumerId': that.clientID,
+            'offer': offer,
+          }
+        )
+      })
+    })
+  }
+
+  const onReceiveRelayRequest = (event) => {
+    event = event.args[0]
+    if (that.clientId !== that.relayState.masterId) {
+      return
+    }
+    console.log("On receive relay request", event)
+    if (that.relayState.masterState === undefined) {
+      that.relayState.masterState = MasterState()
+    }
+    let clients = that.relayState.masterState.clients
+    if (!clients.has(event.consumerId)) {
+      clients.add(event.consumerId, ErizoMap())
+    }
+    let conn = RTCPeerConnection(
+      {
+        'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
+      }
+    )
+    let stream = undefined
+    that.remoteStreams.forEach(localStream => {
+      if (localStream.getID() === event.streamId) {
+        stream = localStream
+      }
+    })
+    that.localStreams.forEach(localStream => {
+      if (localStream.getID() === event.streamId) {
+        stream = localStream
+      }
+    })
+    conn.onicecandidate = event => {
+      if (event.candidate) {
+        socket.sendMessage(
+          'sendIceCandidate',
+          {
+            'clientId': that.clientID,
+            'streamId': event.streamId,
+            'iceCandidate': event.candidate
+          }
+        )
+      }
+    }
+    if (stream === undefined) {
+      console.error("Cannot find stream for id", event.streamId)
+      return
+    }
+    stream.pc.streamsMap.forEach(str => {
+      console.log("Add stream", str.stream, "to", event.consumerId, event.streamId)
+      console.log(str.stream)
+      conn.addStream(stream.stream)
+    })
+    clients.get(event.consumerId).add(event.streamId, conn)
+    console.log(event)
+    console.log(event.offer)
+    conn.setRemoteDescription(new RTCSessionDescription(event.offer))
+    conn.createAnswer().then(answer => {
+      conn.setLocalDescription(answer)
+      socket.sendMessage(
+        'sendRelayResponse',
+        {
+          'consumerId': event.consumerId,
+          'streamId': event.streamId,
+          'answer': answer,
+        }
+      )
+    })
+
+
+  }
+
+  const onReceiveRelayRespone = (event) => {
+    console.log("Relay response", event)
+    event = event.args[0]
+    console.log(event)
+    let conn = that.relayState.replicaState.streams.get(event.streamId)
+    conn.setRemoteDescription(new RTCSessionDescription(event.answer))
+  }
+
+  const onReceiveIceCandidate = (event) => {
+    event = event.args[0]
+    console.log("Ice candidate", event)
+    if (that.relayState.masterId === that.clientId) {
+      let clientStreams = that.relayState.masterState.clients.get(event.clientId)
+      if (clientStreams === undefined) {
+        console.error("Cannot find client", event.clientId)
+        return
+      }
+      let conn = clientStreams.get(event.streamId)
+      if (conn === undefined) {
+        console.error("Cannot find stream for client", event.clientId, event.streamId)
+        return
+      }
+      conn.addIceCandidate(event.iceCandidate)
+    }
+  }
 
   that.on('room-disconnected', clearAll);
+  that.on('onBecomeLeaderIntent', onBecomeLeaderIntent)
 
+  socket.on('leaderIntent', onReceiveBecomeLeaderIntent)
+  socket.on('relayRequest', onReceiveRelayRequest)
+  socket.on('relayResponse', onReceiveRelayRespone)
+  socket.on('iceCandidate', onReceiveIceCandidate)
   socket.on('onAddStream', socketEventToArgs.bind(null, socketOnAddStream));
   socket.on('stream_message_erizo', socketEventToArgs.bind(null, socketOnStreamMessageFromErizo));
   socket.on('stream_message_p2p', socketEventToArgs.bind(null, socketOnStreamMessageFromP2P));

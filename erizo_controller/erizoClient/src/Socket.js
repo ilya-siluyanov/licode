@@ -199,6 +199,24 @@ const Socket = (newIo) => {
       emit('disconnect', 'reconnect failed');
       reliableSocket.disconnect(true);
     }, true);
+
+    reliableSocket.on('leaderIntent', (event) => {
+      log.error('leaderIntent')
+      emit('leaderIntent', event)
+    })
+
+    reliableSocket.on('relayRequest', (event) => {
+      log.error('Relay request')
+      emit('relayRequest', event)
+    })
+    reliableSocket.on('relayResponse', (event) => {
+      log.error('Relay response')
+      emit('relayResponse', event)
+    })
+    reliableSocket.on('iceCandidate', (event) => {
+      log.error('Ice candidate')
+      emit('iceCandidate', event)
+    })
   };
 
   const onBeforeUnload = (evtIn) => {

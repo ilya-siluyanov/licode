@@ -187,9 +187,13 @@ const startBasicExample = () => {
   document.getElementById('publishOnlyAudio').disabled = false;
   document.getElementById('startWarning').hidden = true;
   document.getElementById('startButton').hidden = true;
+  document.getElementById('toggleMaster').onclick = (_) => {
+    room.emit({'type': 'onBecomeLeaderIntent'})
+  }
   console.log('Selected Room', configFlags.room, 'of type', configFlags.type);
   const config = { audio: true,
     video: !configFlags.onlyAudio,
+    audio: false,
     data: true,
     screen: configFlags.screen,
     attributes: {} };
