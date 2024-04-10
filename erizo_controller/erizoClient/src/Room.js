@@ -32,11 +32,19 @@ const MasterState = () => {
   }
 }
 
+const NetState = () => {
+  return {
+    ip: undefined,
+    conn: undefined,
+  }
+}
+
 const RelayState = () => {
   that = EventDispatcher()
   that.masterId = undefined
   that.masterState = undefined
   that.replicaState = undefined
+  that.netState = NetState()
   return that
 }
 const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
@@ -1101,9 +1109,33 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   const onBecomeLeaderIntent = (_) => {
-    that.relayState = RelayState()
+    if (that.relayState.netState.ip === undefined) {
+      log.warning("Subnet IP is not provided. Skip intent")
+      return
+    }
+    that.relayState.masterState = MasterState()
+    that.relayState.relayState = RelayState()
     that.relayState.masterId = that.clientId
-    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientId})
+    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientId, 'netIp': that.relayState.netState.ip})
+  }
+
+  const ensureNotLocal = (address) => {
+    let subnets = [
+      "192.168",
+      "172.",
+    ]
+    for (let subnet of subnets) {
+      if (address.startsWith(subnet)) {
+        return false
+      }
+    }
+    if (address.endsWith(".local")) {
+      return false
+    }
+    if (address.includes(":")) {
+      return false
+    }
+    return true
   }
 
   const onReceiveBecomeLeaderIntent = (event) => {
@@ -1112,8 +1144,12 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     if (event.clientId === that.clientId) {
       return
     }
-    that.relayState = RelayState()
+    if (event.netIp !== that.relayState.netState.ip) {
+      log.warning("Nets do not match: master's net is", event.netIp, ", client's is ", that.relayState.netState.ip)
+      return
+    }
     that.relayState.masterId = event.clientId
+    that.relayState.masterState = MasterState()
     that.relayState.replicaState = ReplicaState()
     that.remoteStreams.forEach((stream) => {
       let conn = RTCPeerConnection(
@@ -1179,6 +1215,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
       }
     )
+
     let stream = undefined
     that.remoteStreams.forEach(localStream => {
       if (localStream.getID() === event.streamId) {
@@ -1190,6 +1227,11 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         stream = localStream
       }
     })
+    if (stream === undefined) {
+      console.error("Cannot find stream for id", event.streamId)
+      return
+    }
+
     conn.onicecandidate = event => {
       if (event.candidate) {
         socket.sendMessage(
@@ -1201,10 +1243,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           }
         )
       }
-    }
-    if (stream === undefined) {
-      console.error("Cannot find stream for id", event.streamId)
-      return
     }
     stream.pc.streamsMap.forEach(str => {
       console.log("Add stream", str.stream, "to", event.consumerId, event.streamId)
@@ -1257,6 +1295,29 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     conn.addIceCandidate(event.iceCandidate)
   }
 
+  const discoverRoomIP = () => {
+    let conn = RTCPeerConnection(
+      {
+        'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
+      }
+    )
+    that.relayState.netState.conn = conn
+    conn.onicecandidate = (event) => {
+      if (!event.candidate) {
+        return
+      }
+      let notLocalAddr = ensureNotLocal(event.candidate.address)
+      console.log("Address:", event.candidate.address, "result: ", notLocalAddr)
+      if (notLocalAddr) {
+        that.relayState.netState.ip = event.candidate.address
+        console.log("Address:", event.candidate.address)
+      }
+    }
+    conn.createOffer({'offerToReceiveVideo': true}).then((offer) => {
+      conn.setLocalDescription(offer)
+    })
+  }
+
   that.on('room-disconnected', clearAll);
   that.on('onBecomeLeaderIntent', onBecomeLeaderIntent)
 
@@ -1279,7 +1340,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   socket.on('reconnected', socketEventToArgs.bind(null, socketOnReconnected));
   socket.on('connection_failed', socketEventToArgs.bind(null, socketOnICEConnectionFailed));
   socket.on('error', socketEventToArgs.bind(null, socketOnError));
-
+  discoverRoomIP()
   return that;
 };
 
