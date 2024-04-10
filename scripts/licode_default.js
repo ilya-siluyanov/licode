@@ -51,7 +51,7 @@ config.erizoController = {};
 //     "credential": password,
 //     "url": url
 // }
-config.erizoController.iceServers = [{'url': 'stun:stun.l.google.com:19302'}]; // default value: [{'url': 'stun:stun.l.google.com:19302'}]
+config.erizoController.iceServers = [{'urls': 'stun:stun.l.google.com:19302'}]; // default value: [{'url': 'stun:stun.l.google.com:19302'}]
 
 // Default and max video bandwidth parameters to be used by clients for both published and subscribed streams
 config.erizoController.defaultVideoBW = 300; //default value: 300
@@ -59,7 +59,7 @@ config.erizoController.maxVideoBW = 300; //default value: 300
 
 // Public erizoController IP for websockets (useful when behind NATs)
 // Use '' to automatically get IP from the interface
-config.erizoController.publicIP = '7963-51-250-100-5.ngrok-free.app'; //default value: ''
+config.erizoController.publicIP = 'socketio.webrtc-thesis.ru'; //default value: ''
 config.erizoController.networkinterface = ''; //default value: ''
 
 // This configuration is used by the clients to reach erizoController

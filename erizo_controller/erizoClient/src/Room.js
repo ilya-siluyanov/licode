@@ -51,7 +51,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   that.localStreams = ErizoMap();
   that.relayingStreams = ErizoMap();
   that.roomID = '';
-  that.clientID = '';
+  that.clientId = '';
   that.relayState = RelayState()
   that.state = DISCONNECTED;
   that.p2p = false;
@@ -799,7 +799,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
       // 3 - Update RoomID
       that.roomID = roomId;
-      that.clientID = response.clientId;
+      that.clientId = response.clientId;
 
       log.info(`message: Connected to room, ${toLog()}`);
 
@@ -1102,18 +1102,18 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   const onBecomeLeaderIntent = (_) => {
     that.relayState = RelayState()
-    that.masterId = that.clientId
-    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientID})
+    that.relayState.masterId = that.clientId
+    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientId})
   }
 
   const onReceiveBecomeLeaderIntent = (event) => {
     console.log("Receive become leader intent:", event)
     event = event.args[0]
-    if (event.clientId === that.clientID) {
+    if (event.clientId === that.clientId) {
       return
     }
     that.relayState = RelayState()
-    that.masterId = that.clientId
+    that.relayState.masterId = event.clientId
     that.relayState.replicaState = ReplicaState()
     that.remoteStreams.forEach((stream) => {
       let conn = RTCPeerConnection(
@@ -1138,7 +1138,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           socket.sendMessage(
             'sendIceCandidate',
             {
-              'clientId': that.clientID,
+              'clientId': that.clientId,
               'streamId': stream.getID(),
               'iceCandidate': event.candidate
             }
@@ -1153,7 +1153,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           'sendRelayRequest',
           {
             'streamId': stream.getID(),
-            'consumerId': that.clientID,
+            'consumerId': that.clientId,
             'offer': offer,
           }
         )
@@ -1195,7 +1195,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         socket.sendMessage(
           'sendIceCandidate',
           {
-            'clientId': that.clientID,
+            'clientId': that.clientId,
             'streamId': event.streamId,
             'iceCandidate': event.candidate
           }
@@ -1240,20 +1240,21 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   const onReceiveIceCandidate = (event) => {
     event = event.args[0]
-    console.log("Ice candidate", event)
-    if (that.relayState.masterId === that.clientId) {
-      let clientStreams = that.relayState.masterState.clients.get(event.clientId)
-      if (clientStreams === undefined) {
-        console.error("Cannot find client", event.clientId)
-        return
-      }
-      let conn = clientStreams.get(event.streamId)
-      if (conn === undefined) {
-        console.error("Cannot find stream for client", event.clientId, event.streamId)
-        return
-      }
-      conn.addIceCandidate(event.iceCandidate)
+    if (that.relayState.masterId !== that.clientId) {
+      return
     }
+
+    let clientStreams = that.relayState.masterState.clients.get(event.clientId)
+    if (clientStreams === undefined) {
+      console.error("Cannot find client", event.clientId)
+      return
+    }
+    let conn = clientStreams.get(event.streamId)
+    if (conn === undefined) {
+      console.error("Cannot find stream for client", event.clientId, event.streamId)
+      return
+    }
+    conn.addIceCandidate(event.iceCandidate)
   }
 
   that.on('room-disconnected', clearAll);
