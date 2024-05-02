@@ -1242,11 +1242,14 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     }
     reinitRelayState()
     that.relayState.masterId = event.clientId
-    that.remoteStreams.forEach((stream) => {
+    function handleStream(stream) {
       if (that.localStreams.has(stream.getID())) {
         return
       }
-      conn = createNewRTCPeerConn(event.clientId, stream.getID())
+
+      let conn = createNewRTCPeerConn(event.clientId, stream.getID())
+      that.relayState.replicaState.streams.add(stream.getID(), conn)
+
       conn.ontrack = (event) => {
         console.log('On track event', event)
         event.streams.forEach(str => {
@@ -1259,7 +1262,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           videoContainer.srcObject = str
         })
       }
-      that.relayState.replicaState.streams.add(stream.getID(), conn)
       conn.createOffer({ 'offerToReceiveVideo': true })
         .then((offer) => {
           conn.setLocalDescription(offer)
@@ -1269,13 +1271,26 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
                 {
                   'streamId': stream.getID(),
                   'consumerId': that.clientId,
-                  'offer': offer,
+                  'offer': conn.localDescription,
                 }
               )
             })
-            .catch(err => { console.error(err) })
+            .catch((err) => {
+              console.error(err)
+              console.warn(localDescription)
+              console.warn(conn)
+              console.warn(offer)
+              console.warn(outerConn)
+            })
         })
-        .catch((err) => console.error(err))
+        .catch((err) => {
+          console.error(err)
+          console.warn(conn)
+        })
+
+    }
+    that.remoteStreams.forEach((stream) => {
+      handleStream(stream)
     })
   }
 
@@ -1304,7 +1319,10 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       console.error("Cannot find stream for id", event.streamId)
       return
     }
+
     let conn = createNewRTCPeerConn(event.consumerId, event.streamId)
+    clients.get(event.consumerId).add(event.streamId, conn)
+
     stream.pc.streamsMap.forEach(str => {
       str = str.stream
       console.log(str)
@@ -1313,7 +1331,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         conn.addTrack(track, str)
       }
     })
-    clients.get(event.consumerId).add(event.streamId, conn)
     conn.setRemoteDescription(event.offer)
     conn.createAnswer().then(answer => {
       conn.setLocalDescription(answer)
@@ -1326,8 +1343,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         }
       )
     })
-
-
   }
 
   const onReceiveRelayResponse = (event) => {
@@ -1423,7 +1438,11 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         let replicaState = that.relayState.replicaState
         if (replicaState !== undefined) {
           stream = replicaState.streams.get(streamId)
-          if (stream === undefined || stream.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair() === null) {
+          if (
+            stream === undefined ||
+            stream.getReceivers()[0].transport === null ||
+            stream.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair() === null
+          ) {
             stream = that.remoteStreams.get(streamId).pc.peerConnection
           }
         }
