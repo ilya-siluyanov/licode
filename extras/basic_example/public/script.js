@@ -41,8 +41,9 @@ const createSubscriberContainer = (stream) => {
   slideshowButton.textContent = 'Toggle Slideshow';
   slideshowButton.setAttribute('style', 'float:left;');
   stream.slideshowMode = false;
-  const chosenIceCandidateText = document.createElement("span", )
-  chosenIceCandidateText.id = `master_${stream.getID()}`
+  const chosenIceCandidateText = document.createElement("span")
+  chosenIceCandidateText.setAttribute('style', 'float:left;');
+  chosenIceCandidateText.id = `candidate_${stream.getID()}`
 
   container.appendChild(unsubscribeButton);
   container.appendChild(slideshowButton);
