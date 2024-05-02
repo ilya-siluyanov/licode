@@ -1262,6 +1262,19 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           videoContainer.srcObject = str
         })
       }
+      conn.onconnectionstatechange = (ev) => {
+        if (conn.connectionState === 'connected') {
+          let mcuStream = that.remoteStreams.get(stream.getID())
+          if (mcuStream === undefined) {
+            return
+          }
+          let pc = mcuStream.pc.peerConnection
+          if (pc !== undefined) {
+            console.warn(`Close stream ${stream.getID()}`)
+            pc.close()
+          }
+        }
+      }
       conn.createOffer({ 'offerToReceiveVideo': true })
         .then((offer) => {
           conn.setLocalDescription(offer)
