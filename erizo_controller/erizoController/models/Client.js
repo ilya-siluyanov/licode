@@ -66,7 +66,6 @@ class Client extends events.EventEmitter {
       if (this.id === client.id) {
         return
       }
-      log.error(client)
       log.error("Send receive message to ", client.id)
       client.channel.socket.emit('leaderIntent', event)
     })

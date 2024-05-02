@@ -20,6 +20,11 @@
       <button id="publishOnlyVideo" onclick="publish(true, false, false)" disabled>Video Only</button>
       <button id="publishOnlyAudio" onclick="publish(false, true, false)" disabled>Audio Only</button>
     </div>
+    <div style="margin-top: 5px;margin-bottom: 5px;">
+      <div>
+        Current master is <span id="currentMaster"></span>
+      </div>
+    </div>
     <h1 id="startWarning">Press the start button to start receiving streams</h1>
     <div style="height: 40px; margin-top: 5px;position:relative;float: left;"><label>Subscribe:</label></div><div id="remoteStreamList" style="margin-top: 5px;"></div>
     <div id="videoContainer" style="position: relative;clear: both;"></div>

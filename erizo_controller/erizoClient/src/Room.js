@@ -34,7 +34,7 @@ const MasterState = () => {
 
 const NetState = () => {
   return {
-    ip: undefined,
+    ips: new Set([]),
     conn: undefined,
   }
 }
@@ -1109,26 +1109,17 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   };
 
   const onBecomeLeaderIntent = (_) => {
-    if (that.relayState.netState.ip === undefined) {
+    if (that.relayState.netState.ips === undefined) {
       log.warning("Subnet IP is not provided. Skip intent")
       return
     }
     that.relayState.masterState = MasterState()
     that.relayState.relayState = RelayState()
     that.relayState.masterId = that.clientId
-    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientId, 'netIp': that.relayState.netState.ip})
+    socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientId, 'netIps': Array.from(that.relayState.netState.ips)})
   }
 
   const ensureNotLocal = (address) => {
-    let subnets = [
-      "192.168",
-      "172.",
-    ]
-    for (let subnet of subnets) {
-      if (address.startsWith(subnet)) {
-        return false
-      }
-    }
     if (address.endsWith(".local")) {
       return false
     }
@@ -1138,26 +1129,74 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     return true
   }
 
+  const closeEnough = (clientAddresses, masterAddresses, bitsToConsider) => {
+    let _closeEnough = (clientAddress, masterAddress, bitsToConsider) => {
+      bitsToConsider = bitsToConsider - 24
+      if (bitsToConsider <= 0) {
+        return false
+      }
+      console.log(`Compare '${clientAddress}' with '${masterAddress}'`)
+      let clientParts = clientAddress.split(".")
+      let masterParts = masterAddress.split(".")
+      for (let i = 0; i < 3; i++) {
+        if (clientParts[i] !== masterParts[i]) {
+          return false
+        }
+      }
+      let clientNum = parseInt(clientParts[3]).toString(2)
+      let masterNum = parseInt(masterParts[3]).toString(2)
+      for (let i = 0; i < bitsToConsider; i++) {
+        if (clientNum[i] !== masterNum[i]) {
+          return false
+        }
+      }
+      return true
+    }
+
+    for (let clientAddress of clientAddresses) {
+      for (let masterAddress of masterAddresses) {
+        if (_closeEnough(clientAddress, masterAddress, bitsToConsider)) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
   const onReceiveBecomeLeaderIntent = (event) => {
     console.log("Receive become leader intent:", event)
     event = event.args[0]
     if (event.clientId === that.clientId) {
       return
     }
-    if (event.netIp !== that.relayState.netState.ip) {
-      log.warning("Nets do not match: master's net is", event.netIp, ", client's is ", that.relayState.netState.ip)
+    let ips = Array.from(that.relayState.netState.ips)
+    if (!closeEnough(ips, event.netIps, 28)) {
+      log.warning(`Nets do not match: master's net is ${event.netIps}, client's is ${ips}`)
       return
     }
     that.relayState.masterId = event.clientId
     that.relayState.masterState = MasterState()
     that.relayState.replicaState = ReplicaState()
     that.remoteStreams.forEach((stream) => {
-      let conn = RTCPeerConnection(
+      let conn = new RTCPeerConnection(
         {
-          'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
+          'iceServers': [
+            {'urls': 'stun:stun.l.google.com:19302'},
+            {'urls': 'turn:51.250.100.5:3478', 'username': 'test', 'credential': 'test123'},
+          ],
         }
       )
-      conn.addEventListener('track', (event) => {
+      conn.onicecandidateerror = errorEvent => {
+        console.error(errorEvent)
+      }
+      conn.oniceconnectionstatechange = change => {
+        console.error(change)
+      }
+      conn.ontrack = (event) => {
+        // if (conn.iceConnectionState !== 'connected') {
+        //   console.warn(`Do not change video source, since conn status is '${conn.iceConnectionState}'`)
+        //   return
+        // }
         event.streams.forEach(str => {
           let containerId = `stream${stream.getID()}`
           let videoContainer = document.getElementById(containerId)
@@ -1166,17 +1205,18 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           }
           console.log("Substitute", containerId, "with", str)
           videoContainer.srcObject = str
-          console.log(str)
         })
-      })
-      conn.onicecandidate = event => {
-        if (event.candidate) {
+      }
+      conn.onicecandidate = iceEvent => {
+        if (iceEvent.candidate) {
+          console.log(`Send ice candidate to ${event.clientId}`)
           socket.sendMessage(
             'sendIceCandidate',
             {
-              'clientId': that.clientId,
+              'sourceId': that.clientId,
+              'targetId': event.clientId,
               'streamId': stream.getID(),
-              'iceCandidate': event.candidate
+              'iceCandidate': iceEvent.candidate
             }
           )
         }
@@ -1184,7 +1224,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       that.relayState.replicaState.streams.add(stream.getID(), conn)
       conn.createOffer({'offerToReceiveVideo': true}).then((offer) => {
         conn.setLocalDescription(offer)
-        console.log("Stream", stream)
         socket.sendMessage(
           'sendRelayRequest',
           {
@@ -1203,23 +1242,14 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       return
     }
     console.log("On receive relay request", event)
-    if (that.relayState.masterState === undefined) {
-      that.relayState.masterState = MasterState()
-    }
     let clients = that.relayState.masterState.clients
     if (!clients.has(event.consumerId)) {
       clients.add(event.consumerId, ErizoMap())
     }
-    let conn = RTCPeerConnection(
-      {
-        'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
-      }
-    )
-
     let stream = undefined
-    that.remoteStreams.forEach(localStream => {
-      if (localStream.getID() === event.streamId) {
-        stream = localStream
+    that.remoteStreams.forEach(remoteStream => {
+      if (remoteStream.getID() === event.streamId) {
+        stream = remoteStream
       }
     })
     that.localStreams.forEach(localStream => {
@@ -1231,27 +1261,43 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       console.error("Cannot find stream for id", event.streamId)
       return
     }
-
-    conn.onicecandidate = event => {
-      if (event.candidate) {
+    let conn = new RTCPeerConnection(
+      {
+        'iceServers': [
+          { 'urls': 'stun:stun.l.google.com:19302' },
+          { 'urls': 'turn:51.250.100.5:3478', 'username': 'test', 'credential': 'test123'},
+        ],
+      }
+    )
+    conn.onicecandidateerror = errorEvent => {
+      console.error(errorEvent)
+    }
+    conn.oniceconnectionstatechange = change => {
+      console.error(change)
+    }
+    conn.onicecandidate = iceEvent => {
+      if (iceEvent.candidate) {
+        console.log(`Send ice candidate to ${event.consumerId}`)
         socket.sendMessage(
           'sendIceCandidate',
           {
-            'clientId': that.clientId,
+            'sourceId': that.clientId,
+            'targetId': event.consumerId,
             'streamId': event.streamId,
-            'iceCandidate': event.candidate
+            'iceCandidate': iceEvent.candidate
           }
         )
       }
     }
     stream.pc.streamsMap.forEach(str => {
-      console.log("Add stream", str.stream, "to", event.consumerId, event.streamId)
-      console.log(str.stream)
-      conn.addStream(stream.stream)
+      str = str.stream
+      console.log(str)
+      for (let track of str.getTracks()) {
+        console.log(`Add track to ${event.consumerId}:${event.streamId}`, track)
+        conn.addTrack(track, str)
+      }
     })
     clients.get(event.consumerId).add(event.streamId, conn)
-    console.log(event)
-    console.log(event.offer)
     conn.setRemoteDescription(new RTCSessionDescription(event.offer))
     conn.createAnswer().then(answer => {
       conn.setLocalDescription(answer)
@@ -1268,37 +1314,57 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   }
 
-  const onReceiveRelayRespone = (event) => {
-    console.log("Relay response", event)
+  const onReceiveRelayResponse = (event) => {
     event = event.args[0]
-    console.log(event)
+    if (event.consumerId !== that.clientId) {
+      return
+    }
+    console.log("Relay response", event)
     let conn = that.relayState.replicaState.streams.get(event.streamId)
     conn.setRemoteDescription(new RTCSessionDescription(event.answer))
   }
 
   const onReceiveIceCandidate = (event) => {
     event = event.args[0]
-    if (that.relayState.masterId !== that.clientId) {
+    console.log("On receive ice candidate", event)
+    if (that.clientId === event.sourceId) {
       return
     }
-
-    let clientStreams = that.relayState.masterState.clients.get(event.clientId)
+    if (that.clientId !== event.targetId) {
+      return
+    }
+    let iceCandidate = new RTCIceCandidate(event.iceCandidate)
+    if (that.relayState.masterId !== that.clientId) {
+      let conn = that.relayState.replicaState.streams.get(event.streamId)
+      if (conn === undefined) {
+        console.log(`Cannot find a conn for ${event.streamId}`)
+      } else {
+        conn.addIceCandidate(iceCandidate)
+      }
+      return
+    }
+    let clientStreams = that.relayState.masterState.clients.get(event.sourceId)
     if (clientStreams === undefined) {
-      console.error("Cannot find client", event.clientId)
+      console.error("Cannot find client", event.sourceId)
       return
     }
     let conn = clientStreams.get(event.streamId)
     if (conn === undefined) {
-      console.error("Cannot find stream for client", event.clientId, event.streamId)
+      console.error("Cannot find stream for client", event.sourceId, event.streamId)
       return
     }
-    conn.addIceCandidate(event.iceCandidate)
+    conn.addIceCandidate(iceCandidate)
+      .then(() => { console.log("Ice candidate was applied") })
+      .catch((exc) => console.error(exc))
   }
 
   const discoverRoomIP = () => {
-    let conn = RTCPeerConnection(
+    let conn = new RTCPeerConnection(
       {
-        'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }],
+        'iceServers': [
+          { 'urls': 'stun:stun.l.google.com:19302' },
+          // { 'urls': 'turn:51.250.100.5:3478', 'username': 'test', 'credential': 'test123'},
+        ],
       }
     )
     that.relayState.netState.conn = conn
@@ -1309,8 +1375,8 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       let notLocalAddr = ensureNotLocal(event.candidate.address)
       console.log("Address:", event.candidate.address, "result: ", notLocalAddr)
       if (notLocalAddr) {
-        that.relayState.netState.ip = event.candidate.address
-        console.log("Address:", event.candidate.address)
+        that.relayState.netState.ips.add(event.candidate.address)
+        console.log("Addresses:", that.relayState.netState.ips)
       }
     }
     conn.createOffer({'offerToReceiveVideo': true}).then((offer) => {
@@ -1323,7 +1389,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   socket.on('leaderIntent', onReceiveBecomeLeaderIntent)
   socket.on('relayRequest', onReceiveRelayRequest)
-  socket.on('relayResponse', onReceiveRelayRespone)
+  socket.on('relayResponse', onReceiveRelayResponse)
   socket.on('iceCandidate', onReceiveIceCandidate)
   socket.on('onAddStream', socketEventToArgs.bind(null, socketOnAddStream));
   socket.on('stream_message_erizo', socketEventToArgs.bind(null, socketOnStreamMessageFromErizo));
@@ -1341,6 +1407,14 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   socket.on('connection_failed', socketEventToArgs.bind(null, socketOnICEConnectionFailed));
   socket.on('error', socketEventToArgs.bind(null, socketOnError));
   discoverRoomIP()
+
+  setInterval(() => {
+    let state = that.relayState
+    let currentMaster = document.getElementById("currentMaster")
+    if (currentMaster !== null) {
+      currentMaster.innerText = state.masterId
+    }
+  }, 1000)
   return that;
 };
 

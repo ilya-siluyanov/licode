@@ -59,17 +59,17 @@ get_or_create_superservice_credentials(){
 
 populate_mongo(){
 
-  if ! pgrep mongod; then
-    echo [licode] Starting mongodb
-    if [ ! -d "$DB_DIR" ]; then
-      mkdir -p "$DB_DIR"/db
-    fi
-    mongod --repair --dbpath $DB_DIR
-    mongod --dbpath $DB_DIR --logpath $BUILD_DIR/mongo.log --fork
-    sleep 5
-  else
-    echo [licode] mongodb already running
-  fi
+  # if ! pgrep mongod; then
+  #   echo [licode] Starting mongodb
+  #   if [ ! -d "$DB_DIR" ]; then
+  #     mkdir -p "$DB_DIR"/db
+  #   fi
+  #   mongod --repair --dbpath $DB_DIR
+  #   mongod --dbpath $DB_DIR --logpath $BUILD_DIR/mongo.log --fork
+  #   sleep 5
+  # else
+  #   echo [licode] mongodb already running
+  # fi
 
   dbURL=`grep "config.nuve.dataBaseURL" $PATHNAME/licode_default.js`
 
