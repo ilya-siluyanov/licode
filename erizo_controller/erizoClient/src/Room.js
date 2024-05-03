@@ -1237,18 +1237,21 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     if (event.clientId === that.clientId) {
       return
     }
-    if (that.relayState.masterId === event.clientId) {
-      return
-    }
     let ips = Array.from(that.relayState.netState.ips)
     if (!closeEnough(ips, event.netIps, 25)) {
       log.warning(`Nets do not match: master's net is ${event.netIps}, client's is ${ips}`)
       return
     }
-    reinitRelayState()
-    that.relayState.masterId = event.clientId
+    if (that.relayState.masterId !== event.clientId) {
+      reinitRelayState()
+      that.relayState.masterId = event.clientId
+    }
     function handleStream(stream) {
       if (that.localStreams.has(stream.getID())) {
+        return
+      }
+
+      if (that.relayState.replicaState.streams.has(stream.getID())) {
         return
       }
 
@@ -1257,15 +1260,18 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
       conn.ontrack = (event) => {
         console.log('On track event', event)
-        event.streams.forEach(str => {
+        let track = event.track
+        track.onunmute = (ev) => {
           let containerId = `stream${stream.getID()}`
           let videoContainer = document.getElementById(containerId)
           if (videoContainer === null) {
             return
           }
-          console.log("Substitute", containerId, "with", str)
-          videoContainer.srcObject = str
-        })
+          let newStream = event.streams[0]
+          console.log("Substitute", containerId, "with", newStream)
+          videoContainer.srcObject = newStream
+
+        }
       }
       conn.onconnectionstatechange = (ev) => {
         if (conn.iceConnectionState === 'disconnected') {
