@@ -1145,12 +1145,14 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     console.info("Finish reinitting relay state")
   }
 
-  const onBecomeLeaderIntent = (_) => {
+  const onBecomeLeaderIntent = () => {
     if (that.relayState.netState.ips === undefined) {
       log.warning("Subnet IP is not provided. Skip intent")
       return
     }
-    reinitRelayState()
+    if (that.relayState.masterId !== that.clientId) {
+      reinitRelayState()
+    }
     that.relayState.masterId = that.clientId
     socket.sendMessage('onBecomeLeaderIntent', {'clientId': that.clientId, 'netIps': Array.from(that.relayState.netState.ips)})
   }
@@ -1235,6 +1237,9 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     if (event.clientId === that.clientId) {
       return
     }
+    if (that.relayState.masterId === event.clientId) {
+      return
+    }
     let ips = Array.from(that.relayState.netState.ips)
     if (!closeEnough(ips, event.netIps, 25)) {
       log.warning(`Nets do not match: master's net is ${event.netIps}, client's is ${ips}`)
@@ -1263,7 +1268,11 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         })
       }
       conn.onconnectionstatechange = (ev) => {
-        if (conn.connectionState === 'connected') {
+        if (conn.iceConnectionState === 'disconnected') {
+          that.relayState.masterId = undefined
+          return
+        }
+        if (conn.iceConnectionState === 'connected') {
           let mcuStream = that.remoteStreams.get(stream.getID())
           if (mcuStream === undefined) {
             return
@@ -1504,6 +1513,20 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     })
   }
 
+  const notifyAboutMaster = () => {
+    if (that.clientId !== that.relayState.masterId) {
+      return
+    }
+    onBecomeLeaderIntent()
+  }
+
+  const tryBecomeMaster = () => {
+    if (that.relayState.masterId !== undefined) {
+      return
+    }
+    onBecomeLeaderIntent()
+  }
+
   that.on('room-disconnected', clearAll);
   that.on('onBecomeLeaderIntent', onBecomeLeaderIntent)
 
@@ -1528,6 +1551,8 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   socket.on('error', socketEventToArgs.bind(null, socketOnError));
   discoverRoomIP()
 
+  setInterval(notifyAboutMaster, 1000)
+  setInterval(tryBecomeMaster, 5000)
   setInterval(() => {
     setFoundAddresses()
     setCurrentID()
