@@ -1558,7 +1558,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   discoverRoomIP()
 
   setInterval(notifyAboutMaster, 1000)
-  setInterval(tryBecomeMaster, 5000)
+  // setInterval(tryBecomeMaster, 5000)
   setInterval(() => {
     setFoundAddresses()
     setCurrentID()

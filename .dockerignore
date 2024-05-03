@@ -35,3 +35,4 @@ scripts/libdeps/
 spine/erizofc.js
 site
 client
+metrics_collector

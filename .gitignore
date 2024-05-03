@@ -34,3 +34,4 @@ erizo/conaninfo.txt
 erizo/graph_info.json
 *.cmake
 venv
+metrics_collector/data
