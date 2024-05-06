@@ -23,10 +23,7 @@ const log = Logger.module('Room');
 
 const STUN_SERVERS = [
   { 'urls': 'stun:stun.l.google.com:19302' },
-  { 'urls': 'stun:stun1.l.google.com:19302' },
-  { 'urls': 'stun:stun2.l.google.com:19302' },
-  { 'urls': 'stun:stun3.l.google.com:19302' },
-  { 'urls': 'stun:stun4.l.google.com:19302' },
+  { 'urls': 'stun:51.250.100.5:3478' },
 ]
 
 // const TURN_SERVERS = [
@@ -1271,7 +1268,9 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     let conn = new RTCPeerConnection(
       {
         'iceServers': STUN_SERVERS.concat(TURN_SERVERS),
-        'bundlePolicy': 'max-bundle',
+        'bundlePolicy': 'max-compat',
+        'iceCandidatePoolSize': 2,
+        'rtcpMuxPolicy': 'negotiate',
       }
     )
     conn.onicecandidateerror = errorEvent => {

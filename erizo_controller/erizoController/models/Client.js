@@ -61,12 +61,10 @@ class Client extends events.EventEmitter {
     this.channel.on('disconnect', this.onDisconnect.bind(this));
   }
   onBecomeLeaderIntent(event) {
-    log.error("On becoming leader message", event)
     this.room.forEachClient((client) => {
       if (this.id === client.id) {
         return
       }
-      log.error("Send receive message to ", client.id)
       client.channel.socket.emit('leaderIntent', event)
     })
   }
@@ -76,7 +74,6 @@ class Client extends events.EventEmitter {
       if (this.id === client.id) {
         return
       }
-      log.error("Send relay request to ", client.id, event)
       client.channel.socket.emit('relayRequest', event)
     })
   }
@@ -86,7 +83,6 @@ class Client extends events.EventEmitter {
       if (this.id === client.id) {
         return
       }
-      log.error("Send relay response to ", client.id, event)
       client.channel.socket.emit('relayResponse', event)
     })
   }
@@ -96,13 +92,11 @@ class Client extends events.EventEmitter {
       if (this.id === client.id) {
         return
       }
-      log.error("Send ice candidate to ", client.id, event)
       client.channel.socket.emit('iceCandidate', event)
     })
   }
 
   stopListeningToSocketEvents() {
-    log.debug(`message: Removing listeners to socket events, client.id: ${this.id}`);
     this.socketEventListeners.forEach((value, key) => {
       this.channel.socketRemoveListener(key, value);
     });
