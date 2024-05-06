@@ -105,7 +105,7 @@ config.erizoController.report = {
 
 // Subscriptions to rtcp_stats via AMQP
 config.erizoController.reportSubscriptions = {
-	maxSubscriptions: 10,	// per ErizoJS -- set 0 to disable subscriptions -- default 10
+	maxSubscriptions: 0,	// per ErizoJS -- set 0 to disable subscriptions -- default 10
 	minInterval: 1, 		// in seconds -- default 1
 	maxTimeout: 60			// in seconds -- default 60
 };

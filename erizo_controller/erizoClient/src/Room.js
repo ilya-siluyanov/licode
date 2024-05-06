@@ -1325,9 +1325,9 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       that.relayState.replicaState.streams.add(stream.getID(), conn)
 
       conn.ontrack = (event) => {
-        console.log('On track event', event)
         let track = event.track
         track.onunmute = (ev) => {
+          console.log('On track event', ev)
           let containerId = `stream${stream.getID()}`
           let videoContainer = document.getElementById(containerId)
           if (videoContainer === null) {

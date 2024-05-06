@@ -17,14 +17,16 @@ if ! pgrep -f rabbitmq; then
 fi
 
 cd $ROOT/nuve
-./initNuve.sh
+./initNuve.sh &
+cd $ROOT/scripts
 
 sleep 3
 
 export ERIZO_HOME=$ROOT/erizo/
 
 cd $ROOT/erizo_controller
-./initErizo_controller.sh
-./initErizo_agent.sh
+./initErizo_controller.sh &
+./initErizo_agent.sh &
+cd $ROOT/scripts
 
 echo [licode] Done, run ./scripts/initBasicExample.sh

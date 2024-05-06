@@ -14,6 +14,6 @@ export LD_LIBRARY_PATH="$LICODE_ROOT/build/libdeps/build/lib"
 
 cd $ROOT/erizoAgent
 nvm use
-node erizoAgent.js $* &
-
-cd $CURRENT_DIR
+while true; do
+    node erizoAgent.js $*
+done
