@@ -73,7 +73,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   that.remoteStreams = ErizoMap();
   that.localStreams = ErizoMap();
-  that.relayingStreams = ErizoMap();
   that.roomID = '';
   that.clientId = '';
   that.relayState = RelayState()
@@ -183,6 +182,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       }
 
       if (connection && spec.singlePC) {
+        console.error("Close connection")
         that.erizoConnectionManager.maybeCloseConnection(connection, true);
       }
     }
@@ -325,6 +325,28 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           connectionOpts.callback({ type: 'failed' });
         }
       }
+      if (evt.msg.state === 'connected') {
+        let pair = connection.peerConnection.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+        let localPair = pair.local
+        fetch("https://collector.webrtc-thesis.ru/connections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // 'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: JSON.stringify({
+            ts: new Date().toISOString(),
+            clientId: 'SFU',
+            edge: {
+              targetId: that.clientId,
+              type_: "add",
+              candidateAddr: `${localPair.address}:${localPair.port}`
+            }
+          })
+        })
+          .then(() => { })
+          .catch((err) => console.error(err))
+      }
     });
   };
 
@@ -344,9 +366,53 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           connectionOpts.callback({ type: 'failed' });
         }
       }
+      if (evt.msg.state === 'connected') {
+        let pair = connection.peerConnection.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+        let remotePair = pair.remote
+        fetch("https://collector.webrtc-thesis.ru/connections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ts: new Date().toISOString(),
+            clientId: that.clientId,
+            edge: {
+              targetId: 'SFU',
+              type_: "add",
+              candidateAddr: `${remotePair.address}:${remotePair.port}`
+            }
+          })
+        })
+          .then(() => { })
+          .catch((err) => console.error(err))
+      }
     });
     stream.pc.addStream(stream);
   };
+
+  const onConnectionFailed = (evt) => {
+    console.log("OnConnectionFailed", evt)
+    fetch("https://collector.webrtc-thesis.ru/connections", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // 'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: JSON.stringify({
+        ts: new Date().toISOString(),
+        clientId: 'SFU',
+        edge: {
+          targetId: that.clientId,
+          type_: "delete",
+          candidateAddr: 'nodata'
+        }
+      })
+    })
+      .then(() => { })
+      .catch((err) => console.error(err))
+  }
+
 
   // We receive an event with a new stream in the room.
   // type can be "media" or "data"
@@ -1288,6 +1354,26 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
             console.warn(`Close stream ${stream.getID()}`)
             pc.close()
           }
+          let pair = conn.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
+          let localPair = pair.local
+          let remotePair = pair.remote
+          fetch("https://collector.webrtc-thesis.ru/connections", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ts: new Date().toISOString(),
+              clientId: event.clientId,
+              edge: {
+                targetId: that.clientId,
+                type_: "add",
+                candidateAddr: `${localPair.address}:${localPair.port}`
+              }
+            })
+          })
+            .then(() => { })
+            .catch((err) => console.error(err))
         }
       }
       conn.createOffer({ 'offerToReceiveVideo': true })
@@ -1535,6 +1621,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   that.on('room-disconnected', clearAll);
   that.on('onBecomeLeaderIntent', onBecomeLeaderIntent)
+  that.on('connection-failed', onConnectionFailed)
 
   socket.on('leaderIntent', onReceiveBecomeLeaderIntent)
   socket.on('relayRequest', onReceiveRelayRequest)

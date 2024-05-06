@@ -271,7 +271,6 @@ const startBasicExample = () => {
         }
       });
     };
-    room.on('connection-failed', console.log.bind(console));
 
     room.addEventListener('room-connected', (roomEvent) => {
       const options = { metadata: { type: 'publisher' } };

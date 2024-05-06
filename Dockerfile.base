@@ -1,0 +1,10 @@
+FROM ubuntu:20.04
+
+ENV TZ=Europe/Madrid
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+RUN apt update && apt install -y lsof sudo curl make curl wget git
+RUN useradd ilyasiluyanov
+USER ilyasiluyanov
+
+WORKDIR /opt/licode

@@ -1,7 +1,10 @@
 services:
   redis:
-    image: redis/redis-stack-server:latest
+    image: bitnami/redis:latest
+    restart: unless-stopped
     ports:
       - 6379:6379
+    environment:
+      ALLOW_EMPTY_PASSWORD: yes
     volumes:
-      - ./data:/data
+      - ./data:/bitnami/redis/data

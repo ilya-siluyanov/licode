@@ -10,9 +10,9 @@ do
     result+=($pid)
 done
 
-for pid in $(ps aux | grep rabbit | awk '{print $2}' | tail -n+1)
-do
-    result+=($pid)
-done
+# for pid in $(ps aux | grep rabbit | awk '{print $2}' | tail -n+1)
+# do
+#     result+=($pid)
+# done
 
 echo ${result[@]}
