@@ -1,11 +1,16 @@
 import time
-from selenium.webdriver import Chrome
-from selenium.webdriver.common.by import By
+import sys
+from selenium.webdriver import Chrome, ChromeOptions, ChromeService
 
 
-driver = Chrome()
+path = sys.argv[1]
 
-driver.get("https://iu.webrtc-thesis.ru")
+options = ChromeOptions()
+options.add_argument("use-fake-device-for-media-stream")
+options.add_argument("use-fake-ui-for-media-stream")
+
+service = ChromeService(executable_path='/Users/ilyasiluyanov/Downloads/yandexdriver')
+driver = Chrome(options=options, service=service)
+driver.get("https://ui.webrtc-thesis.ru")
 driver.implicitly_wait(5)
-driver.find_element(by=By.ID)
 time.sleep(10000)
