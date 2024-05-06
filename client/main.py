@@ -11,6 +11,9 @@ options.add_argument("use-fake-ui-for-media-stream")
 
 service = ChromeService(executable_path='/Users/ilyasiluyanov/Downloads/yandexdriver')
 driver = Chrome(options=options, service=service)
-driver.get("https://ui.webrtc-thesis.ru")
-driver.implicitly_wait(5)
-time.sleep(10000)
+try:
+    driver.get("https://ui.webrtc-thesis.ru")
+    driver.implicitly_wait(5)
+    time.sleep(10000)
+finally:
+    driver.close()

@@ -30,3 +30,4 @@ cd $ROOT/erizo_controller
 cd $ROOT/scripts
 
 echo [licode] Done, run ./scripts/initBasicExample.sh
+./initBasicExample.sh &
