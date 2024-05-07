@@ -1,0 +1,4 @@
+services:
+  chrome:
+   image: selenium/standalone-firefox
+   network_mode: host
