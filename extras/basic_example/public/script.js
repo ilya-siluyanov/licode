@@ -44,6 +44,7 @@ const createSubscriberContainer = (stream) => {
   const chosenIceCandidateText = document.createElement("span")
   chosenIceCandidateText.setAttribute('style', 'float:left;');
   chosenIceCandidateText.id = `candidate_${stream.getID()}`
+  chosenIceCandidateText.classList.add("candidatetext")
 
   container.appendChild(unsubscribeButton);
   container.appendChild(slideshowButton);

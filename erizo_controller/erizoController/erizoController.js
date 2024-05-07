@@ -124,7 +124,7 @@ const log = logger.getLogger('ErizoController');
 // Constants
 const SOCKET_IO_PING_INTERVAL = 10000;
 const SOCKET_IO_PING_TIMEOUT = 5000;
-const SOCKET_IO_ENABLE_LOGS = true;
+const SOCKET_IO_ENABLE_LOGS = false;
 
 const EXIT_ON_NUVE_CHECK_FAIL = global.config.erizoController.exitOnNuveCheckFail;
 const WARNING_N_ROOMS = global.config.erizoController.warning_n_rooms;
