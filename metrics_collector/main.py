@@ -43,7 +43,9 @@ async def collect_metric(
 @app.post('/metrics/start')
 async def add_starter(delete_old: bool = False):
     if delete_old:
-        await r.delete(*await r.keys('*'))
+        keys = await r.keys('*')
+        if keys:
+            await r.delete(*keys)
     metric = Metric(ts=datetime.now(tz=timezone.utc), clientId='', metric_name='start', metric_value=1)
     key = f"{START_PREFIX}{metric.ts.timestamp()}_{str(uuid4())}"
     await r.set(key, metric.model_dump_json())

@@ -14,5 +14,6 @@ export LD_LIBRARY_PATH="$LICODE_ROOT/build/libdeps/build/lib"
 cd $ROOT/erizoAgent
 nvm use
 while true; do
+    ps aux | grep erizoJS | awk '{print $2}' | xargs kill
     node erizoAgent.js $*
 done

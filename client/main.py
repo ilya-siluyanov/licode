@@ -1,4 +1,7 @@
 from argparse import ArgumentParser
+import os
+import sys
+import signal
 import time
 from selenium.webdriver import Chrome, ChromeOptions, ChromeService, Remote
 from selenium.webdriver.common.by import By
@@ -21,6 +24,17 @@ def main(path: str, headless: bool, remote: bool):
         service = ChromeService(executable_path=path)
         driver = Chrome(options=options, service=service)
 
+    def onexit(*args, **kwargs):
+        driver.quit()
+        sys.exit()
+
+    def on_become_leader_intent(*args, **kwargs):
+        print(f"{os.getpid()} on become leader intent")
+        driver.execute_script("room.emit({'type': 'onBecomeLeaderIntent'})")
+
+    signal.signal(signal.SIGTERM, onexit)
+    signal.signal(signal.SIGUSR1, on_become_leader_intent)
+
     try:
         driver.get("https://ui.webrtc-thesis.ru")
         driver.implicitly_wait(5)
@@ -30,10 +44,10 @@ def main(path: str, headless: bool, remote: bool):
             for element in elements:
                 id_ = element.get_dom_attribute("id")
                 text = element.text
-                print(f"{id_}: {text}")
+                print(f"{os.getpid()} {id_}: {text}")
     finally:
         print("close driver")
-        driver.close()
+        driver.quit()
 
 
 if __name__ == '__main__':

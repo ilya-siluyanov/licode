@@ -6,31 +6,36 @@ import asyncio
 client = httpx.AsyncClient()
 
 
-async def send_bandwi(data):
-    body = {
-        'ts': data['timestamp'],
-        'clientId': 'SFU',
-        'metric_name': 'BANDWI',
-        'metric_value': data['info']['totalrsz'],
-    }
-    print(json.dumps(body))
-    await client.post("http://localhost:10000/metrics", json=body)
-
-
 async def send_net(data):
     body = {
         'ts': data['timestamp'],
         'clientId': 'SFU',
-        'metric_name': 'BANDWI',
-        'metric_value': data['net']['totalrsz'],
+        'metric_name': 'UDPIN',
+        'metric_value': data['net']['udprsz'],
     }
     print(json.dumps(body))
     asyncio.create_task(client.post("http://localhost:10000/metrics", json=body))
     body = {
         'ts': data['timestamp'],
         'clientId': 'SFU',
-        'metric_name': 'BANDWO',
-        'metric_value': data['net']['totalssz'],
+        'metric_name': 'UDPOUT',
+        'metric_value': data['net']['udpssz'],
+    }
+    print(json.dumps(body))
+    asyncio.create_task(client.post("http://localhost:10000/metrics", json=body))
+    body = {
+        'ts': data['timestamp'],
+        'clientId': 'SFU',
+        'metric_name': 'TCPIN',
+        'metric_value': data['net']['tcprsz'],
+    }
+    print(json.dumps(body))
+    asyncio.create_task(client.post("http://localhost:10000/metrics", json=body))
+    body = {
+        'ts': data['timestamp'],
+        'clientId': 'SFU',
+        'metric_name': 'TCPOUT',
+        'metric_value': data['net']['tcpssz'],
     }
     print(json.dumps(body))
     asyncio.create_task(client.post("http://localhost:10000/metrics", json=body))

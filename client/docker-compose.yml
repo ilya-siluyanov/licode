@@ -1,4 +1,21 @@
 services:
-  chrome:
-   image: selenium/standalone-firefox
-   network_mode: host
+  chrome1:
+   image: selenium/standalone-chrome:4.20.0-20240505
+   ports:
+    - 4444:4444
+  chrome2:
+   image: selenium/standalone-chrome:4.20.0-20240505
+   ports:
+    - 4445:4444
+  chrome3:
+   image: selenium/standalone-chrome:4.20.0-20240505
+   ports:
+    - 4446:4444
+  chrome4:
+   image: selenium/standalone-chrome:4.20.0-20240505
+   ports:
+    - 4447:4444
+  chrome5:
+   image: selenium/standalone-chrome:4.20.0-20240505
+   ports:
+    - 4448:4444
