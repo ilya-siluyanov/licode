@@ -83,6 +83,9 @@ class Client extends events.EventEmitter {
       if (this.id === client.id) {
         return
       }
+      if (event.consumerId !== client.id) {
+        return
+      }
       client.channel.socket.emit('relayResponse', event)
     })
   }
@@ -90,6 +93,9 @@ class Client extends events.EventEmitter {
   onSendIceCandidate(event) {
     this.room.forEachClient((client) => {
       if (this.id === client.id) {
+        return
+      }
+      if (event.targetId !== client.id) {
         return
       }
       client.channel.socket.emit('iceCandidate', event)

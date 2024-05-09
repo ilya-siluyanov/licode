@@ -1236,7 +1236,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       if (bitsToConsider <= 0) {
         return false
       }
-      console.log(`Compare '${clientAddress}' with '${masterAddress}'`)
       let clientParts = clientAddress.split(".")
       let masterParts = masterAddress.split(".")
       for (let i = 0; i < 3; i++) {
@@ -1297,7 +1296,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   }
 
   const onReceiveBecomeLeaderIntent = (event) => {
-    console.log("Receive become leader intent:", event)
     event = event.args[0]
     if (event.clientId === that.clientId) {
       return
@@ -1307,6 +1305,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       log.warning(`Nets do not match: master's net is ${event.netIps}, client's is ${ips}`)
       return
     }
+    console.log("Receive become leader intent:", event)
     if (that.relayState.masterId !== event.clientId) {
       reinitRelayState()
       that.relayState.masterId = event.clientId
@@ -1355,7 +1354,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           }
           let pair = conn.getReceivers()[0].transport.iceTransport.getSelectedCandidatePair()
           let localPair = pair.local
-          let remotePair = pair.remote
           fetch("https://collector.webrtc-thesis.ru/connections", {
             method: "POST",
             headers: {
@@ -1400,7 +1398,6 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
           console.error(err)
           console.warn(conn)
         })
-
     }
     that.remoteStreams.forEach((stream) => {
       handleStream(stream)
@@ -1445,6 +1442,8 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       }
     })
     conn.setRemoteDescription(event.offer)
+      .then(() => { })
+      .catch((err) => console.error(err))
     conn.createAnswer().then(answer => {
       conn.setLocalDescription(answer)
       socket.sendMessage(
@@ -1465,18 +1464,23 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     }
     console.log("Relay response", event)
     let conn = that.relayState.replicaState.streams.get(event.streamId)
+    if (conn.signalingState === "stable") {
+      return
+    }
     conn.setRemoteDescription(new RTCSessionDescription(event.answer))
+      .then(() => { })
+      .catch((err) => console.error(err))
   }
 
   const onReceiveIceCandidate = (event) => {
     event = event.args[0]
-    console.log("On receive ice candidate", event)
     if (that.clientId === event.sourceId) {
       return
     }
     if (that.clientId !== event.targetId) {
       return
     }
+    console.log("On receive ice candidate", event)
     let iceCandidate = new RTCIceCandidate(event.iceCandidate)
     let conn = undefined
     if (that.relayState.masterId === that.clientId) {
@@ -1618,6 +1622,91 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     onBecomeLeaderIntent()
   }
 
+  const pushStats = () => {
+    /** @type {Array<Promise<RTCStatsReport>>} */
+    let cons = []
+    that.localStreams.forEach((stream) => {
+      if (stream.pc !== undefined) {
+        cons.push(stream.pc.peerConnection.getStats())
+      }
+    })
+    that.remoteStreams.forEach((stream) => {
+      if (stream.local !== true) {
+        cons.push(stream.pc.peerConnection.getStats())
+      }
+    })
+    if (that.clientId === that.relayState.masterId) {
+      that.relayState.masterState.clients.forEach((client) => {
+        client.forEach((stream) => {
+          cons.push(stream.getStats())
+        })
+      })
+    } else if (that.relayState.replicaState !== undefined) {
+      that.relayState.replicaState.streams.forEach((stream) => {
+        cons.push(stream.getStats())
+      })
+    }
+
+    let totalIn = 0
+    let totalOut = 0
+
+    Promise.all(cons).then((reports) => {
+      if (reports.length === 0) {
+        return
+      }
+      for (let report of reports) {
+        for (let entry of report.values()) {
+          if (entry.type === "inbound-rtp") {
+            if (entry.bytesReceived !== undefined) {
+              totalIn += entry.bytesReceived
+            }
+          }
+          if (entry.type === "outbound-rtp") {
+            if (entry.bytesSent !== undefined) {
+              totalOut += entry.bytesSent
+            }
+          }
+        }
+      }
+
+      let body = JSON.stringify({
+        ts: new Date().toISOString(),
+        clientId: that.clientId,
+        metric_name: 'NETIN',
+        metric_value: totalIn,
+      })
+      console.log(body)
+
+      fetch("https://collector.webrtc-thesis.ru/metrics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: body,
+      })
+        .then(() => { })
+        .catch((err) => console.error(err))
+
+      body = JSON.stringify({
+        ts: new Date().toISOString(),
+        clientId: that.clientId,
+        metric_name: 'NETOUT',
+        metric_value: totalOut,
+      })
+      console.log(body)
+
+      fetch("https://collector.webrtc-thesis.ru/metrics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: body,
+      })
+        .then(() => { })
+        .catch((err) => console.error(err))
+    })
+  }
+
   that.on('room-disconnected', clearAll);
   that.on('onBecomeLeaderIntent', onBecomeLeaderIntent)
   that.on('connection-failed', onConnectionFailed)
@@ -1643,13 +1732,17 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
   socket.on('error', socketEventToArgs.bind(null, socketOnError));
   discoverRoomIP()
 
-  setInterval(notifyAboutMaster, 1000)
-  // setInterval(tryBecomeMaster, 5000)
+  setInterval(notifyAboutMaster, 5000)
+  // setInterval(tryBecomeMaster, 15000)
   setInterval(() => {
     setFoundAddresses()
     setCurrentID()
     setCurrentMaster()
     setCurrentRemoteCandidate()
+  }, 1000)
+
+  setInterval(() => {
+    pushStats()
   }, 1000)
   return that;
 };
