@@ -1669,38 +1669,32 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         }
       }
 
-      let body = JSON.stringify({
-        ts: new Date().toISOString(),
-        clientId: that.clientId,
-        metric_name: 'NETIN',
-        metric_value: totalIn,
-      })
-      console.log(body)
-
       fetch("https://collector.webrtc-thesis.ru/metrics", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: body,
+        body: JSON.stringify({
+          ts: new Date().toISOString(),
+          clientId: that.clientId,
+          metric_name: 'NETIN',
+          metric_value: totalIn,
+        })
       })
         .then(() => { })
         .catch((err) => console.error(err))
 
-      body = JSON.stringify({
-        ts: new Date().toISOString(),
-        clientId: that.clientId,
-        metric_name: 'NETOUT',
-        metric_value: totalOut,
-      })
-      console.log(body)
-
       fetch("https://collector.webrtc-thesis.ru/metrics", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: body,
+        body: JSON.stringify({
+          ts: new Date().toISOString(),
+          clientId: that.clientId,
+          metric_name: 'NETOUT',
+          metric_value: totalOut,
+        }),
       })
         .then(() => { })
         .catch((err) => console.error(err))
