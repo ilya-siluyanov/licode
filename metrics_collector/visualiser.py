@@ -67,7 +67,6 @@ def plot_groups(system_metrics: dict[str, tuple[list[datetime], list[float]]]):
             timestamps, metric_values = system_metrics[metric_name]
             plot.xaxis.set_major_formatter(DateFormatter("%H:%M"))
             plot.yaxis.set_major_formatter(FormatStrFormatter(f"%.2f {units[name]}"))
-            plot.set_ylim(bottom=0)
             plot.plot(timestamps, metric_values, label=metric_name, linestyle="solid")
 
 
@@ -133,7 +132,7 @@ def plot_client_net(
             derivative: list[float] = []
             for i, v in enumerate(values):
                 if i == 0:
-                    derivative.append(v)
+                    derivative.append(0)
                     continue
                 prev_value = values[i - 1]
                 d = max(0, v - prev_value)
