@@ -1,0 +1,56 @@
+#  - name: Creates directory
+#    ansible.builtin.file:
+#      path: "{{ project_root }}"
+#      state: absent
+
+- name: Creates directory
+  ansible.builtin.file:
+    path: "{{ project_root }}"
+    state: directory
+- name: Download atop
+  ansible.builtin.unarchive:
+    remote_src: yes
+    src: https://www.atoptool.nl/download/atop-2.10.0.tar.gz
+    creates: "{{ project_root }}/atop-2.10.0"
+    dest: "{{ project_root }}"
+- name: Creates directory
+  ansible.builtin.file:
+    path: "{{ project_root }}/netatop"
+    state: directory
+- name: Download netatop
+  ansible.builtin.unarchive:
+    remote_src: yes
+    src: https://www.atoptool.nl/download/netatop-3.1.tar.gz
+    creates: "{{ project_root }}/netatop/netatop-3.1"
+    dest: "{{ project_root }}/netatop"
+- name: Update repositories cache and install deps
+  ansible.builtin.apt:
+    pkg:
+      - build-essential
+      - libncurses5-dev
+      - zlib1g-dev
+      - libglib2.0-dev
+    update_cache: yes
+- name: Configure atop
+  community.general.make:
+    chdir: "{{ project_root }}/atop-2.10.0"
+- name: Install atop
+  ignore_errors: true
+  community.general.make:
+    chdir: "{{ project_root }}/atop-2.10.0"
+    target: install
+- name: Configure netatop
+  community.general.make:
+    chdir: "{{ project_root }}/netatop/netatop-3.1"
+- name: Install netatop
+  ignore_errors: true
+  community.general.make:
+    chdir: "{{ project_root }}/netatop/netatop-3.1"
+    target: install
+- name: Just force systemd to reread configs (2.4 and above)
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+- name: Make sure a service unit is running
+  ansible.builtin.systemd_service:
+    state: started
+    name: netatop
