@@ -1,0 +1,6 @@
+- hosts: all
+  become: true
+  roles:
+    - clientstop
+  vars:
+    project_root: /home/ilyasiluyanov/client
