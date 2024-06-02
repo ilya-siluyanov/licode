@@ -8,7 +8,7 @@ config.rabbit = {};
 config.rabbit.host = 'localhost'; //default value: 'localhost'
 config.rabbit.port = 5672; //default value: 5672
 // Sets the AQMP heartbeat timeout to detect dead TCP Connections
-config.rabbit.heartbeat = 8; //default value: 8 seconds, 0 to disable
+config.rabbit.heartbeat = 0; //default value: 8 seconds, 0 to disable
 config.logger = {};
 config.logger.configFile = '../log4js_configuration.json'; //default value: "../log4js_configuration.json"
 
@@ -88,7 +88,7 @@ config.erizoController.maxErizosUsedByRoom = 100;  // default value: 100
 
 config.erizoController.warning_n_rooms = 15; // default value: 15
 config.erizoController.limit_n_rooms = 20; // default value: 20
-config.erizoController.interval_time_keepAlive = 1000; // default value: 1000
+config.erizoController.interval_time_keepAlive = 10000; // default value: 1000
 
 // Roles to be used by services
 config.erizoController.roles =

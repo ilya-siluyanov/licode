@@ -185,7 +185,6 @@ def main():
         plot.legend()
         plot.grid(True)
     plot_client_net(axis[1, 1], metrics, client_metrics)
-    plt.show()
 
 
 if __name__ == "__main__":

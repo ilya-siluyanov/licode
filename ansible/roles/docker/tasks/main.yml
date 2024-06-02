@@ -47,6 +47,16 @@
 - name: Pip install docker for Ansible's docker_login and docker_service modules
   ansible.builtin.pip:
     name: docker-compose
+- name: Setup daemon
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "proxies": {
+          "https-proxy": "socks5://proxy.huecker.io:1080",
+          "no-proxy": "ghcr.io,*.test.example.com,.example.org,127.0.0.0/8"
+        }
+      }
 
 - name: Make sure docker is running
   become: true

@@ -8,7 +8,7 @@ config.rabbit = {};
 config.rabbit.host = 'localhost'; //default value: 'localhost'
 config.rabbit.port = 5672; //default value: 5672
 // Sets the AQMP heartbeat timeout to detect dead TCP Connections
-config.rabbit.heartbeat = 8; //default value: 8 seconds, 0 to disable
+config.rabbit.heartbeat = 0; //default value: 8 seconds, 0 to disable
 config.logger = {};
 config.logger.configFile = '../log4js_configuration.json'; //default value: "../log4js_configuration.json"
 
@@ -142,7 +142,7 @@ config.erizoAgent.useIndividualLogFiles = false;
 config.erizoAgent.launchDebugErizoJS = false;
 
 // If true this Agent will log also nICEr logs
-config.erizoAgent.enableNicerLogs = true; // default value: true
+config.erizoAgent.enableNicerLogs = false; // default value: true
 
 // Custom log directory for agent instance log files.
 // If useIndividualLogFiles is enabled, files will go here
@@ -162,7 +162,7 @@ config.erizo = {};
 config.erizo.numWorkers = 24;
 
 // Number of workers what will be used for IO (including ICE logic)
-config.erizo.numIOWorkers = 1;
+config.erizo.numIOWorkers = 24;
 
 // the max amount of time in days a process is allowed to be up after the first publisher is added
 config.erizo.activeUptimeLimit = 7;
