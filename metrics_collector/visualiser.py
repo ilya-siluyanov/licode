@@ -2,6 +2,7 @@ from collections import defaultdict
 import httpx
 from matplotlib.dates import DateFormatter
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.ticker import FormatStrFormatter
 from datetime import datetime
@@ -11,18 +12,22 @@ figure, axis = plt.subplots(2, 2)
 groups: dict[str, set[str]] = {
     "NET": {"UDPIN", "UDPOUT", "TCPIN", "TCPOUT"},
     "CPU": {"CPUTOTAL"},
-    "MEM": {"VMEM", "RMEM"},
+    "VMEM": {"VMEM"},
+    "RMEM": {"RMEM"},
 }
+figures = [figure, plt.figure(), plt.figure(), plt.figure()]
 plots: dict[str, Axes] = {
-    "NET": axis[0, 0],
+    "NET": figures[1].subplots(1, 1),
+    "VMEM": figures[2].subplots(1, 1),
+    "RMEM": figures[3].subplots(1, 1),
     "CPU": axis[0, 1],
-    "MEM": axis[1, 0],
 }
 
 units = {
     "NET": "Kbps",
     "CPU": "sec",
-    "MEM": "MiB",
+    "VMEM": "MiB",
+    "RMEM": "MiB",
     "CLIENTNET": "Kbps",
 }
 
@@ -70,9 +75,11 @@ def plot_groups(system_metrics: dict[str, tuple[list[datetime], list[float]]]):
             plot.plot(timestamps, metric_values, label=metric_name, linestyle="solid")
 
 
-def find_closest(input_ts: datetime, metricsets: list[tuple[list[datetime], list[float]]]) -> float:
+def find_closest(
+    input_ts: datetime, metricsets: list[tuple[list[datetime], list[float]]]
+) -> float:
     to_return = 0
-    for (tss, metrics) in metricsets:
+    for tss, metrics in metricsets:
         closest_value = 0
         for ts, v in zip(tss, metrics):
             if ts > input_ts:
@@ -98,8 +105,8 @@ def get_events_for_group(
     for metric in metrics:
         if "dataType" in metric and metric["dataType"] == "connection":
             timestamp = datetime.fromisoformat(metric["ts"][:-1])
-            if metric["edge"]["targetId"] == "SFU" or metric['clientId'] == 'SFU':
-                if metric["edge"]['type_'] == 'add':
+            if metric["edge"]["targetId"] == "SFU" or metric["clientId"] == "SFU":
+                if metric["edge"]["type_"] == "add":
                     sfu_conn_ts.append(timestamp)
                     sfu_conn_values.append(find_closest(timestamp, metricsets))
                 else:
@@ -157,7 +164,7 @@ def plot_client_net(
 
 
 def main():
-    metrics = httpx.get("https://collector.webrtc-thesis.ru/metrics/latest").json()
+    metrics = httpx.get("https://collector.webrtc-thesis.ru/metrics/latest", timeout=30).json()
     system_metrics, client_metrics = collect_system_metrics(metrics)
     plot_groups(system_metrics)
     for group_name, plot in plots.items():
@@ -185,6 +192,9 @@ def main():
         plot.legend()
         plot.grid(True)
     plot_client_net(axis[1, 1], metrics, client_metrics)
+    plt.show()
+    for figure in figures:
+        figure.show()
 
 
 if __name__ == "__main__":
