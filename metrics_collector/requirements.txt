@@ -42,6 +42,7 @@ pytz==2024.1
 PyYAML==6.0.1
 redis==5.0.4
 rich==13.7.1
+scipy==1.13.1
 selenium==4.20.0
 shellingham==1.5.4
 six==1.16.0

@@ -2,25 +2,62 @@ from collections import defaultdict
 import httpx
 from matplotlib.dates import DateFormatter
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.ticker import FormatStrFormatter
 from datetime import datetime
+import scipy
+from scipy import interpolate
 
 
-figure, axis = plt.subplots(2, 2)
+thresholds = {
+    "NETIN": 500,
+    "NETOUT": 500,
+}
+
+S = 1
+
 groups: dict[str, set[str]] = {
-    "NET": {"UDPIN", "UDPOUT", "TCPIN", "TCPOUT"},
+    "Server NETIN": {"TCPIN", "UDPIN"},
+    "Server NETOUT": {"TCPOUT", "UDPOUT"},
     "CPU": {"CPUTOTAL"},
     "VMEM": {"VMEM"},
     "RMEM": {"RMEM"},
+    "NETIN": {"NETIN"},
+    "NETOUT": {"NETOUT"},
 }
-figures = [figure, plt.figure(), plt.figure(), plt.figure()]
+
+figures = [
+    plt.figure(),
+    plt.figure(),
+    plt.figure(),
+    plt.figure(),
+    plt.figure(),
+    plt.figure(),
+    plt.figure(),
+]
+
+axes: list[Axes] = [
+    figures[0].subplots(1, 1),
+    figures[1].subplots(1, 1),
+    figures[2].subplots(1, 1),
+    figures[3].subplots(1, 1),
+    figures[4].subplots(1, 1),
+    figures[5].subplots(1, 1),
+    figures[6].subplots(1, 1),
+]
+
+for fig in figures:
+    fig.set_size_inches(10, 5)
+    # fig.tight_layout()
+
 plots: dict[str, Axes] = {
-    "NET": figures[1].subplots(1, 1),
-    "VMEM": figures[2].subplots(1, 1),
-    "RMEM": figures[3].subplots(1, 1),
-    "CPU": axis[0, 1],
+    "CPU": axes[0],
+    "Server NETIN": axes[1],
+    "VMEM": axes[2],
+    "RMEM": axes[3],
+    "NETIN": axes[4],
+    "NETOUT": axes[5],
+    "Server NETOUT": axes[6],
 }
 
 units = {
@@ -28,7 +65,10 @@ units = {
     "CPU": "sec",
     "VMEM": "MiB",
     "RMEM": "MiB",
-    "CLIENTNET": "Kbps",
+    "NETIN": "Kbps",
+    "NETOUT": "Kbps",
+    "Server NETIN": "Kbps",
+    "Server NETOUT": "Kbps",
 }
 
 
@@ -55,12 +95,22 @@ def collect_system_metrics(
         else:
             metric_storage = client_metrics_storage[metric["clientId"]][name]
 
+        v = metric["metric_value"]
+        threshold = thresholds.get(name)
+        if threshold is not None and len(metric_storage[1]) > 0:
+            prevValue = metric_storage[1][-1]
+            v = min(v, prevValue + threshold)
+            v = max(v, prevValue - threshold)
         metric_storage[0].append(ts)
-        metric_storage[1].append(metric["metric_value"])
+        metric_storage[1].append(v)
 
     for metric, (tss, values) in system_metrics.items():
         tss.pop(0)
         values.pop(0)
+    for _, metrics in client_metrics_storage.items():
+        for _, (tss, values) in metrics.items():
+            tss.pop(0)
+            values.pop(0)
 
     return system_metrics, client_metrics_storage
 
@@ -70,9 +120,47 @@ def plot_groups(system_metrics: dict[str, tuple[list[datetime], list[float]]]):
         plot.set_title(f"{name} stats")
         for metric_name in groups[name]:
             timestamps, metric_values = system_metrics[metric_name]
+            if metric_values == []:
+                continue
             plot.xaxis.set_major_formatter(DateFormatter("%H:%M"))
             plot.yaxis.set_major_formatter(FormatStrFormatter(f"%.2f {units[name]}"))
-            plot.plot(timestamps, metric_values, label=metric_name, linestyle="solid")
+            # metric_values = interpolate.splrep(
+            #     [ts.timestamp() for ts in timestamps], metric_values, s=S
+            # )
+            # plot.plot(
+            #     timestamps,
+            #     interpolate.BSpline(*metric_values)([ts.timestamp() for ts in timestamps]),
+            #     label=metric_name,
+            #     linestyle="solid",
+            # )
+            plot.plot(
+                timestamps,
+                metric_values,
+                label=metric_name,
+                linestyle="solid",
+            )
+
+
+def plot_client_groups(
+    client_id,
+    metrics: dict[str, tuple[list[datetime], list[float]]],
+):
+    if client_id == "":
+        return
+    for name, plot in plots.items():
+        plot.set_title(f"{name} stats")
+        for metric_name in groups[name]:
+            timestamps, metric_values = metrics[metric_name]
+            if metric_values == []:
+                continue
+            plot.xaxis.set_major_formatter(DateFormatter("%H:%M"))
+            plot.yaxis.set_major_formatter(FormatStrFormatter(f"%.2f {units[name]}"))
+            plot.plot(
+                timestamps,
+                metric_values,
+                label=f"{metric_name}:{client_id[:6]}",
+                linestyle="solid",
+            )
 
 
 def find_closest(
@@ -82,7 +170,7 @@ def find_closest(
     for tss, metrics in metricsets:
         closest_value = 0
         for ts, v in zip(tss, metrics):
-            if ts > input_ts:
+            if ts > input_ts and (ts.timestamp() - input_ts.timestamp()) > 1:
                 break
             closest_value = v
         to_return = max(to_return, closest_value)
@@ -122,55 +210,26 @@ def get_events_for_group(
     )
 
 
-def plot_client_net(
-    axes: Axes,
-    metrics: list[dict],
-    client_metrics_storage: dict[str, dict[str, tuple[list[datetime], list[float]]]],
-):
-    axes.set_title("Client NET stats")
-    axes.xaxis.set_major_formatter(DateFormatter("%H:%M"))
-    axes.yaxis.set_major_formatter(FormatStrFormatter("%.2f Kbps"))
-
-    metricsets = []
-    for client, client_metrics in client_metrics_storage.items():
-        for metric_name, (tss, values) in client_metrics.items():
-            if metric_name not in ("NETIN", "NETOUT"):
-                continue
-            derivative: list[float] = []
-            for i, v in enumerate(values):
-                if i == 0:
-                    derivative.append(0)
-                    continue
-                prev_value = values[i - 1]
-                d = max(0, v - prev_value)
-                derivative.append(d / 1000)
-
-            metricsets.append((tss, derivative))
-            axes.plot(
-                tss, derivative, label=f"{metric_name}:{client[0:6]}", linestyle="solid"
-            )
-    sfu_conn, sfu_disconn, master_conn = get_events_for_group(metrics, metricsets)
-    axes.plot(
-        *sfu_conn, color="y", marker="o", linestyle="None", label="SFU connection"
-    )
-    axes.plot(
-        *sfu_disconn, color="r", marker="o", linestyle="None", label="SFU disconnect"
-    )
-    axes.plot(
-        *master_conn, color="g", marker="o", linestyle="None", label="Master connection"
-    )
-    axes.legend()
-    axes.grid(True)
-
-
 def main():
-    metrics = httpx.get("https://collector.webrtc-thesis.ru/metrics/latest", timeout=30).json()
+    metrics = httpx.get(
+        "https://collector.webrtc-thesis.ru/metrics/latest", timeout=30
+    ).json()
     system_metrics, client_metrics = collect_system_metrics(metrics)
     plot_groups(system_metrics)
+    for client_id, client_metrics_ in client_metrics.items():
+        plot_client_groups(client_id, client_metrics_)
     for group_name, plot in plots.items():
         metricsets = []
         for metric_name in groups[group_name]:
-            metricsets.append(system_metrics[metric_name])
+            metricset = system_metrics[metric_name]
+            if metricset != ([], []):
+                metricsets.append(metricset)
+                continue
+            for _, metrics_values in client_metrics.items():
+                metricset2 = metrics_values[metric_name]
+                if metricset2 != ([], []):
+                    metricsets.append(metricset2)
+
         sfu_conn, sfu_disconn, master_conn = get_events_for_group(metrics, metricsets)
         plot.plot(
             *sfu_conn, color="y", marker="o", linestyle="None", label="SFU connection"
@@ -191,10 +250,10 @@ def main():
         )
         plot.legend()
         plot.grid(True)
-    plot_client_net(axis[1, 1], metrics, client_metrics)
+    for name, plot in plots.items():
+        plot.figure.savefig(name + ".png", dpi=200)
+    plt.savefig("a.png", dpi=200)
     plt.show()
-    for figure in figures:
-        figure.show()
 
 
 if __name__ == "__main__":
