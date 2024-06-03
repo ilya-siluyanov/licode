@@ -627,7 +627,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     const stream = evt.stream;
     const msg = evt.msg;
     if (stream.local) {
-      socket.sendMessage('sendDataStream', { id: stream.getID(), msg });
+      that.socket.sendMessage('sendDataStream', { id: stream.getID(), msg });
     } else {
       log.error(`message: You can not send data through a remote stream, ${stream.toLog()}, ${toLog()}`);
     }
@@ -638,7 +638,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     const attrs = evt.attrs;
     if (stream.local) {
       stream.updateLocalAttributes(attrs);
-      socket.sendMessage('updateStreamAttributes', { id: stream.getID(), attrs });
+      that.socket.sendMessage('updateStreamAttributes', { id: stream.getID(), attrs });
     } else {
       log.error(`message: You can not update attributes in a remote stream, ${stream.toLog()}, ${toLog()}`);
     }
@@ -1241,7 +1241,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       reinitRelayState()
     }
     that.relayState.masterId = that.clientId
-    socket.sendMessage('onBecomeLeaderIntent', { 'clientId': that.clientId, 'netIps': Array.from(that.relayState.netState.ips) })
+    that.socket.sendMessage('onBecomeLeaderIntent', { 'clientId': that.clientId, 'netIps': Array.from(that.relayState.netState.ips) })
   }
 
   const ensureNotLocal = (address) => {
@@ -1305,7 +1305,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     conn.onicecandidate = iceEvent => {
       if (iceEvent.candidate) {
         console.log(`Send ice candidate to ${targetId}:${streamId}`)
-        socket.sendMessage(
+        that.socket.sendMessage(
           'sendIceCandidate',
           {
             'sourceId': that.clientId,
@@ -1401,7 +1401,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         .then((offer) => {
           conn.setLocalDescription(offer)
             .then(() => {
-              socket.sendMessage(
+              that.socket.sendMessage(
                 'sendRelayRequest',
                 {
                   'streamId': stream.getID(),
@@ -1470,7 +1470,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       .catch((err) => console.error(err))
     conn.createAnswer().then(answer => {
       conn.setLocalDescription(answer)
-      socket.sendMessage(
+      that.socket.sendMessage(
         'sendRelayResponse',
         {
           'consumerId': event.consumerId,
@@ -1646,7 +1646,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
     onBecomeLeaderIntent()
   }
 
-  let prevCons = {}
+  let prevCons = { 'ts': undefined }
 
   const pushStats = async () => {
     let cons = {}
@@ -1661,25 +1661,24 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
       }
     })
     if (that.clientId === that.relayState.masterId) {
-      that.relayState.masterState.clients.forEach((client) => {
-        client.forEach((stream) => {
-          cons[stream.stream.id] = stream.getStats()
-        })
-      })
+      for (let clientId of that.relayState.masterState.clients.keys()) {
+        let streams = that.relayState.masterState.clients.get(clientId)
+        for (let streamId of streams.keys()) {
+          let stream = streams.get(streamId)
+          cons[streamId] = stream.getStats()
+        }
+      }
     } else if (that.relayState.replicaState !== undefined) {
-      that.relayState.replicaState.streams.forEach((stream) => {
-        cons[stream.stream.id] = stream.getStats()
-      })
+      for (let streamId of that.relayState.replicaState.streams.keys()) {
+        let stream = that.relayState.replicaState.streams.get(streamId)
+        cons[streamId] = stream.getStats()
+      }
     }
 
     let newStats = {
       'totalIn': 0,
       'totalOut': 0,
     }
-    for (const [_, promise] of Object.entries(cons)) {
-      promise.then((stats) => { })
-    }
-
     for (const [streamId, promise] of Object.entries(cons)) {
       let prevIn = 0
       let prevOut = 0
@@ -1713,6 +1712,17 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
         }
       }
     }
+
+    let ts = new Date()
+    let timeElapsed = 3
+    if (prevCons.ts !== undefined) {
+      timeElapsed = Math.abs(ts - prevCons.ts) / 1000
+    }
+    prevCons.ts = ts
+    newStats.totalIn /= timeElapsed
+    newStats.totalIn /= 128
+    newStats.totalOut /= timeElapsed
+    newStats.totalOut /= 128
 
     fetch("https://collector.webrtc-thesis.ru/metrics", {
       method: "POST",
@@ -1781,7 +1791,7 @@ const Room = (altIo, altConnectionHelpers, altConnectionManager, specInput) => {
 
   setInterval(async () => {
     await pushStats()
-  }, 1000)
+  }, 3000)
   return that;
 };
 

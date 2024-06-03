@@ -165,11 +165,11 @@ config.erizo.numWorkers = 24;
 config.erizo.numIOWorkers = 24;
 
 // the max amount of time in days a process is allowed to be up after the first publisher is added
-config.erizo.activeUptimeLimit = 7;
+config.erizo.activeUptimeLimit = 7000;
 // the max time in hours since last publish or subscribe operation where a erizoJS process can be killed
-config.erizo.maxTimeSinceLastOperation = 3;
+config.erizo.maxTimeSinceLastOperation = 3000;
 // Interval to check uptime in seconds
-config.erizo.checkUptimeInterval = 1800;
+config.erizo.checkUptimeInterval = 1800000;
 
 //STUN server IP address and port to be used by the server.
 //if '' is used, the address is discovered locally

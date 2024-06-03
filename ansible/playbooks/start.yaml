@@ -1,5 +1,6 @@
 - hosts: all
   become: true
+  serial: 1
   roles:
     - starter
   vars:
