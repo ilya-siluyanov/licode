@@ -17,7 +17,7 @@ let AWS;
 const INTERVAL_TIME_EC_READY = 500;
 const TOTAL_ATTEMPTS_EC_READY = 20;
 const INTERVAL_TIME_CHECK_KA = 1000;
-const MAX_KA_COUNT = 10;
+const MAX_KA_COUNT = 1000;
 
 let getErizoController;
 
